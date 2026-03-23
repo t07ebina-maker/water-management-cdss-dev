@@ -892,6 +892,18 @@ function goNext() {
   h += `<div class="band"><div class="band-title blue">総合判定</div><div class="band-body">`;
   h += `<table class="p2-tbl">`;
   h += row('脱水タイプ', `<span class="p2-type-badge ${dcolor}" style="padding:3px 10px;font-size:13px;">${dlabel}</span>`, dbasis.substring(0,50)+'…');
+  if (classMode === 'posm' && naVal !== null) {
+    const naCategory = naVal > 145 ? '高張性' : naVal < 135 ? '低張性' : '等張性';
+    const posmCategory = posm > 295 ? '高張性' : posm < 285 ? '低張性' : '等張性';
+    const mismatch = naCategory !== posmCategory;
+    const posmNote = mismatch
+      ? `※ NaからはNaCategory（${naCategory}）と推定されますが、Posmを優先して${posmCategory}と判定しています。`
+      : `※ Posmを優先して判定しています（Naとの整合あり）。`;
+    h += `<tr><td colspan="3" style="font-size:11px;color:#555;padding:4px 8px;background:#f5f5f5;border-radius:4px;">`
+      + `本ツールはNa・Glu・BUNから算出したPosmが得られる場合、血清Na単独よりPosmを優先して脱水タイプを判定します。`
+      + (mismatch ? `　<strong style="color:#E65100;">見かけ上のNa区分（${naCategory}）と最終判定（${posmCategory}）が一致していません。</strong>` : '')
+      + `</td></tr>`;
+  }
   h += row('血清浸透圧', posm !== null ? posm + ' mOsm/L' : '（Na・Glu・BUN を入力すると算出）', '正常: 285〜295');
   h += row('eGFR / CKD', egfrVal !== null ? egfrVal + ' mL/分/1.73m²' : '（Cre 未入力）', egfrStg);
   h += row('Shock Index', si !== null ? si : '（HR・SBP 未入力）', si !== null ? (si > 1.0 ? '[Critical]' : si > 0.8 ? '[Warning]' : '正常') : '');
@@ -977,6 +989,20 @@ function goNext() {
 
     h += `<div class="p2-stop">中止基準：呼吸困難・ラ音出現（肺水腫） / 尿量 &lt; 0.5 mL/kg/h / Na変化 &gt; 0.5 mEq/L/h</div>`;
     h += `<div class="p2-rec" style="margin-top:10px;">${fluidPlan.steps.map((s,i)=>`${i+1}. ${s}`).join('<br>')}</div>`;
+    h += '</div></div>';
+  } else {
+    // Critical アラートあり → プロトコル非表示・代替メッセージ表示
+    const critTitles = alerts.critical.map(a => a.title).join('　/　');
+    h += `<div class="band"><div class="band-title" style="background:#C62828;color:#fff;">推奨輸液プロトコル — 表示停止中</div><div class="band-body">`;
+    h += `<div class="p2-stop" style="margin-bottom:10px;">`;
+    h += `Criticalアラートが発生しています。まず医師へ報告し、循環動態・呼吸状態・意識状態の安定化を優先してください。`;
+    h += `</div>`;
+    h += `<div style="font-size:12px;color:#555;margin-top:6px;">`;
+    h += `<strong>停止理由：</strong>${critTitles}`;
+    h += `</div>`;
+    h += `<div style="font-size:12px;color:#555;margin-top:8px;">`;
+    h += `状態が安定したら再入力・再計算を行い、プロトコルを確認してください。`;
+    h += `</div>`;
     h += '</div></div>';
   }
 
