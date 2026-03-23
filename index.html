@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>特定行為（水分管理）判断支援ツール</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ===== HEADER ===== -->
+<div class="header">
+  <h1>特定行為（水分管理）判断支援ツール</h1>
+  <div class="sub">臨床意思決定補助ツール（CDSS） &#x2014; 患者情報入力 &#x2192; 脱水タイプ分類 &#x2192; 輸液計画</div>
+  <div class="disclaimer">本ツールは「診断」を行いません。思考過程の可視化と計算支援に限定します。最終決定は必ず医師の指示に基づいてください。</div>
+</div>
+
+<div class="main">
+
+  <!-- ===== ALERT SUMMARY ===== -->
+  <div id="alertSummary">
+    <div class="no-alert" id="noAlertMsg">アラートなし &#x2014; 入力を開始してください</div>
+  </div>
+
+  <!-- ===== STATUS BAR ===== -->
+  <div class="status-bar">
+    <span class="status-label">総合ステータス:</span>
+    <span class="status-badge waiting" id="statusBadge">入力待ち</span>
+    <span class="status-label" style="margin-left:8px;">Critical:</span>
+    <span class="status-badge waiting" id="critCount">0</span>
+    <span class="status-label">Warning:</span>
+    <span class="status-badge waiting" id="warnCount">0</span>
+    <span class="status-label">Info:</span>
+    <span class="status-badge waiting" id="infoCount">0</span>
+  </div>
+
+  <!-- ===== SAMPLE CASE PANEL ===== -->
+  <div class="sample-panel" id="samplePanel">
+    <div class="sample-panel-hdr">
+      <span>サンプル症例（50例）&#x2014; 検証・類似症例参照用</span>
+      <button class="btn-sample-toggle" id="btnSampleToggle" onclick="toggleSamplePanel()">一覧を開く &#x25BC;</button>
+    </div>
+    <div class="sample-cards-body" id="sampleCardsBody">
+      <!-- カードはDOMContentLoadedで生成 -->
+    </div>
+  </div>
+
+  <!-- ===== SECTION 1: 基本情報 ===== -->
+  <div class="card" id="card1">
+    <div class="card-header" onclick="toggleCard('card1')">
+      <span class="c-icon">S1</span>
+      <h2>セクション 1 &#x2014; 基本情報</h2>
+      <span class="c-status waiting" id="s1-status">入力待ち</span>
+      <span class="c-toggle" id="c-toggle1">&#9660;</span>
+    </div>
+    <div class="card-body" id="card1-body">
+      <div class="gridAuto">
+        <div class="form-group">
+          <label class="fl" for="age">年齢 <span class="req">*</span> <span class="unit">歳</span></label>
+          <input type="number" id="age" min="0" max="120" placeholder="例: 75" oninput="validate()">
+          <div class="fmsg" id="age-msg"></div>
+        </div>
+        <div class="form-group">
+          <label class="fl" for="sex">性別 <span class="req">*</span></label>
+          <select id="sex" onchange="validate()">
+            <option value="">選択してください</option>
+            <option value="male">男性</option>
+            <option value="female">女性</option>
+            <option value="other">その他</option>
+          </select>
+          <div class="fmsg" id="sex-msg"></div>
+        </div>
+        <div class="form-group">
+          <label class="fl" for="height">身長 <span class="req">*</span> <span class="unit">cm</span> <span class="range-hint">(50〜250)</span></label>
+          <input type="number" id="height" min="50" max="250" step="0.1" placeholder="例: 165.0" oninput="validate()">
+          <div class="fmsg" id="height-msg"></div>
+        </div>
+      </div>
+
+      <div class="sec-label">体重情報</div>
+      <div class="grid2">
+        <div class="form-group">
+          <label class="fl" for="usuWeight">通常時体重 <span class="req">*</span> <span class="unit">kg</span> <span class="range-hint">(20〜300)</span></label>
+          <input type="number" id="usuWeight" min="20" max="300" step="0.1" placeholder="例: 60.0" oninput="validate()">
+          <div class="fmsg" id="usuWeight-msg"></div>
+        </div>
+        <div class="form-group">
+          <label class="fl" for="usuWeightDate">通常時体重 測定日 <span class="range-hint">（いつ測定した体重か）</span></label>
+          <input type="date" id="usuWeightDate" oninput="validate()">
+          <div class="fmsg" id="usuWeightDate-msg"></div>
+        </div>
+        <div class="form-group">
+          <label class="fl" for="curWeight">現体重 <span class="req">*</span> <span class="unit">kg</span> <span class="range-hint">(20〜300)</span></label>
+          <input type="number" id="curWeight" min="20" max="300" step="0.1" placeholder="例: 57.5" oninput="validate()">
+          <div class="fmsg" id="curWeight-msg"></div>
+        </div>
+        <div class="form-group">
+          <label class="fl" for="curWeightDate">現体重 測定日 <span class="range-hint">（初期値: 今日）</span></label>
+          <input type="date" id="curWeightDate" oninput="validate()">
+          <div class="fmsg" id="curWeightDate-msg"></div>
+        </div>
+      </div>
+
+      <div class="grid2" style="margin-top:12px;">
+        <div class="form-group">
+          <label class="fl">体重変化量（自動計算）</label>
+          <div class="auto-field" id="weightDiff">&#x2014;</div>
+        </div>
+        <div class="form-group">
+          <label class="fl">減少期間（自動計算）</label>
+          <div class="auto-field" id="weightDays">&#x2014;</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== SECTION 2: バイタルサイン ===== -->
+  <div class="card" id="card2">
+    <div class="card-header" onclick="toggleCard('card2')">
+      <span class="c-icon">S2</span>
+      <h2>セクション 2 &#x2014; バイタルサイン</h2>
+      <span class="c-status waiting" id="s2-status">入力待ち</span>
+      <span class="c-toggle" id="c-toggle2">&#9660;</span>
+    </div>
+    <div class="card-body" id="card2-body">
+      <div class="sec-label">意識レベル</div>
+      <div class="grid2">
+        <div class="form-group">
+          <label class="fl">スケール選択</label>
+          <div class="con-tabs">
+            <div class="con-tab active" id="tab-jcs" onclick="switchConsciousness('jcs')">JCS（Japan Coma Scale）</div>
+            <div class="con-tab" id="tab-gcs" onclick="switchConsciousness('gcs')">GCS（Glasgow Coma Scale）</div>
+          </div>
+          <div id="jcs-area">
+            <select id="jcs" onchange="validate()">
+              <option value="">選択してください</option>
+              <option value="0">JCS 0 &#x2014; 意識清明</option>
+              <optgroup label="I（刺激なしで覚醒）">
+                <option value="I-1">I-1 &#x2014; 大体清明だが、今ひとつはっきりしない</option>
+                <option value="I-2">I-2 &#x2014; 見当識障害がある（時・場所・人の誤認）</option>
+                <option value="I-3">I-3 &#x2014; 自分の名前・生年月日が言えない</option>
+              </optgroup>
+              <optgroup label="II（刺激で覚醒）">
+                <option value="II-10">II-10 &#x2014; 普通の呼びかけで容易に開眼する</option>
+                <option value="II-20">II-20 &#x2014; 大きな声または体を揺さぶると開眼する</option>
+                <option value="II-30">II-30 &#x2014; 痛み刺激を加えつつ呼びかけると辛うじて開眼する</option>
+              </optgroup>
+              <optgroup label="III（刺激しても覚醒しない）">
+                <option value="III-100">III-100 &#x2014; 痛み刺激に対して払いのける動作をする</option>
+                <option value="III-200">III-200 &#x2014; 痛み刺激で少し手足を動かし顔をしかめる</option>
+                <option value="III-300">III-300 &#x2014; 痛み刺激に全く反応しない</option>
+              </optgroup>
+            </select>
+          </div>
+          <div id="gcs-area" style="display:none;">
+            <div class="gcs-row">
+              <div>
+                <div class="gcs-comp-label">E &#x2014; 開眼</div>
+                <select id="gcsE" onchange="updateGCSDisplay(); validate()">
+                  <option value="">E?</option>
+                  <option value="1">E1 &#x2014; 開眼なし</option>
+                  <option value="2">E2 &#x2014; 痛み刺激で開眼</option>
+                  <option value="3">E3 &#x2014; 呼びかけで開眼</option>
+                  <option value="4">E4 &#x2014; 自発的に開眼</option>
+                </select>
+              </div>
+              <div>
+                <div class="gcs-comp-label">V &#x2014; 発語</div>
+                <select id="gcsV" onchange="updateGCSDisplay(); validate()">
+                  <option value="">V?</option>
+                  <option value="1">V1 &#x2014; 発声なし</option>
+                  <option value="2">V2 &#x2014; 理解できない発声</option>
+                  <option value="3">V3 &#x2014; 単語レベル</option>
+                  <option value="4">V4 &#x2014; 混乱した会話</option>
+                  <option value="5">V5 &#x2014; 正常な会話</option>
+                </select>
+              </div>
+              <div>
+                <div class="gcs-comp-label">M &#x2014; 運動</div>
+                <select id="gcsM" onchange="updateGCSDisplay(); validate()">
+                  <option value="">M?</option>
+                  <option value="1">M1 &#x2014; 動きなし</option>
+                  <option value="2">M2 &#x2014; 異常伸展（除脳硬直）</option>
+                  <option value="3">M3 &#x2014; 異常屈曲（除皮質硬直）</option>
+                  <option value="4">M4 &#x2014; 逃避反応</option>
+                  <option value="5">M5 &#x2014; 痛み部位に手が届く</option>
+                  <option value="6">M6 &#x2014; 命令に従う</option>
+                </select>
+              </div>
+            </div>
+            <div class="gcs-total-display" id="gcsTotal">E? + V? + M? = —</div>
+          </div>
+          <div class="fmsg" id="consciousness-msg"></div>
+        </div>
+        <div class="form-group">
+          <label class="fl">Shock Index（自動計算）<span class="unit">HR ÷ SBP</span></label>
+          <div class="auto-field" id="shockIndex">&#x2014;</div>
+          <div class="fmsg info" id="si-hint">HR（心拍数）と収縮期血圧を入力すると自動計算します</div>
+        </div>
+      </div>
+
+      <div class="sec-label">循環・呼吸</div>
+      <div class="grid2">
+        <div class="form-group">
+          <label class="fl">血圧 <span class="req">*</span> <span class="unit">mmHg</span> <span class="range-hint">収縮期 50〜250 / 拡張期 30〜150</span></label>
+          <div class="bp-row">
+            <input type="number" id="sbp" min="50" max="250" placeholder="収縮期" oninput="validate()">
+            <span class="bp-sep">/</span>
+            <input type="number" id="dbp" min="30" max="150" placeholder="拡張期" oninput="validate()">
+          </div>
+          <div class="fmsg" id="bp-msg"></div>
+        </div>
+        <div class="form-group">
+          <label class="fl" for="hr">心拍数 <span class="req">*</span> <span class="unit">bpm</span> <span class="range-hint">(30〜200)</span></label>
+          <input type="number" id="hr" min="30" max="200" placeholder="例: 88" oninput="validate()">
+          <div class="fmsg" id="hr-msg"></div>
+        </div>
+        <div class="form-group">
+          <label class="fl" for="rr">呼吸数 <span class="req">*</span> <span class="unit">/分</span> <span class="range-hint">(5〜60)</span></label>
+          <input type="number" id="rr" min="5" max="60" placeholder="例: 18" oninput="validate()">
+          <div class="fmsg" id="rr-msg"></div>
+        </div>
+        <div class="form-group">
+          <label class="fl" for="spo2">SpO₂ <span class="req">*</span> <span class="unit">%</span> <span class="range-hint">(70〜100)</span></label>
+          <input type="number" id="spo2" min="70" max="100" step="0.1" placeholder="例: 97" oninput="validate()">
+          <div class="fmsg" id="spo2-msg"></div>
+        </div>
+        <div class="form-group">
+          <label class="fl" for="temp">体温 <span class="req">*</span> <span class="unit">℃</span> <span class="range-hint">(34.0〜42.0)</span></label>
+          <input type="number" id="temp" min="34" max="42" step="0.1" placeholder="例: 37.2" oninput="validate()">
+          <div class="fmsg" id="temp-msg"></div>
+        </div>
+      </div>
+
+      <div class="sec-label">尿量</div>
+      <div class="form-group" style="max-width: 340px;">
+        <label class="fl">尿量 <span class="req">*</span></label>
+        <div class="urine-toggle">
+          <div class="utbtn active" id="uBtn-h" onclick="switchUrine('h')">mL/時間</div>
+          <div class="utbtn" id="uBtn-d" onclick="switchUrine('d')">mL/日</div>
+        </div>
+        <div id="urine-h-area">
+          <input type="number" id="urineH" min="0" max="1000" placeholder="例: 50 mL/h" oninput="validate()">
+        </div>
+        <div id="urine-d-area" style="display:none;">
+          <input type="number" id="urineD" min="0" max="24000" placeholder="例: 1200 mL/日" oninput="validate()">
+        </div>
+        <div class="fmsg" id="urine-msg"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== SECTION 3: 身体診察 ===== -->
+  <div class="card" id="card3">
+    <div class="card-header" onclick="toggleCard('card3')">
+      <span class="c-icon">S3</span>
+      <h2>セクション 3 &#x2014; 身体診察（チェックボックス）</h2>
+      <span class="c-status waiting" id="s3-status">任意入力</span>
+      <span class="c-toggle" id="c-toggle3">&#9660;</span>
+    </div>
+    <div class="card-body" id="card3-body">
+      <div class="cb-grid">
+        <div class="cb-item" id="cb-dryMouth">
+          <input type="checkbox" id="dryMouth" onchange="toggleCb('dryMouth'); validate()">
+          <label for="dryMouth">口腔乾燥</label>
+        </div>
+        <div class="cb-item" id="cb-turgurDown">
+          <input type="checkbox" id="turgurDown" onchange="toggleCb('turgurDown'); validate()">
+          <label for="turgurDown">皮膚ツルゴール低下</label>
+        </div>
+        <div class="cb-item" id="cb-axilDry">
+          <input type="checkbox" id="axilDry" onchange="toggleCb('axilDry'); validate()">
+          <label for="axilDry">腋窩乾燥</label>
+        </div>
+        <div class="cb-item" id="cb-edema">
+          <input type="checkbox" id="edema" onchange="toggleCb('edema'); toggleEdema(); validate()">
+          <label for="edema">浮腫</label>
+        </div>
+        <div class="cb-item" id="cb-rales">
+          <input type="checkbox" id="rales" onchange="toggleCb('rales'); validate()">
+          <label for="rales">ラ音（聴診）</label>
+        </div>
+        <div class="cb-item" id="cb-jvd">
+          <input type="checkbox" id="jvd" onchange="toggleCb('jvd'); validate()">
+          <label for="jvd">頸静脈怒張（JVD）</label>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
+          <label class="fl" style="margin:0;min-width:auto;">CP angle</label>
+          <select id="cpAngle" onchange="validate()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);font-size:14px;">
+            <option value="">未評価</option>
+            <option value="sharp">sharp（正常）</option>
+            <option value="dull">dull（鈍化 / 胸水疑い）</option>
+          </select>
+        </div>
+      </div>
+      <div class="edema-sub" id="edemaSub">
+        <label class="fl">浮腫の部位</label>
+        <div class="cb-grid" style="margin-top:6px;">
+          <div class="cb-item" id="cb-edema-leg">
+            <input type="checkbox" id="edemaLeg" onchange="toggleCb('edema-leg')">
+            <label for="edemaLeg">下腿浮腫</label>
+          </div>
+          <div class="cb-item" id="cb-edema-whole">
+            <input type="checkbox" id="edemaWhole" onchange="toggleCb('edema-whole')">
+            <label for="edemaWhole">全身性浮腫</label>
+          </div>
+        </div>
+      </div>
+      <div id="exam-contradiction" style="margin-top:12px;"></div>
+    </div>
+  </div>
+
+  <!-- ===== SECTION 4: 血液検査データ ===== -->
+  <div class="card" id="card4">
+    <div class="card-header" onclick="toggleCard('card4')">
+      <span class="c-icon">S4</span>
+      <h2>セクション 4 &#x2014; 血液検査データ</h2>
+      <span class="c-status waiting" id="s4-status">入力待ち</span>
+      <span class="c-toggle" id="c-toggle4">&#9660;</span>
+    </div>
+    <div class="card-body" id="card4-body">
+      <div class="sec-label">電解質</div>
+      <div class="grid3">
+        <div class="form-group">
+          <label class="fl" for="na">Na <span class="unit">mEq/L</span> <span class="range-hint">(100〜180) ※推奨</span></label>
+          <input type="number" id="na" min="100" max="180" step="0.1" placeholder="例: 140" oninput="validate()">
+          <div class="fmsg" id="na-msg"></div>
+        </div>
+        <div class="form-group">
+          <label class="fl" for="k">K <span class="unit">mEq/L</span> <span class="range-hint">(2.0〜8.0) ※推奨</span></label>
+          <input type="number" id="k" min="2.0" max="8.0" step="0.1" placeholder="例: 4.2" oninput="validate()">
+          <div class="fmsg" id="k-msg"></div>
+        </div>
+        <div class="form-group">
+          <label class="fl" for="cl">Cl <span class="unit">mEq/L</span> <span class="range-hint">(70〜130)</span></label>
+          <input type="number" id="cl" min="70" max="130" step="0.1" placeholder="例: 102" oninput="validate()">
+          <div class="fmsg" id="cl-msg"></div>
+        </div>
+      </div>
+
+      <div class="sec-label">腎機能</div>
+      <div class="grid3">
+        <div class="form-group">
+          <label class="fl" for="bun">BUN（UN） <span class="req">*</span> <span class="unit">mg/dL</span> <span class="range-hint">(1〜200)</span></label>
+          <input type="number" id="bun" min="1" max="200" step="0.1" placeholder="例: 18" oninput="validate()">
+          <div class="fmsg" id="bun-msg"></div>
+        </div>
+        <div class="form-group">
+          <label class="fl" for="cre">Cre <span class="req">*</span> <span class="unit">mg/dL</span> <span class="range-hint">(0.1〜20)</span></label>
+          <input type="number" id="cre" min="0.1" max="20" step="0.01" placeholder="例: 0.82" oninput="validate()">
+          <div class="fmsg" id="cre-msg"></div>
+        </div>
+        <div class="form-group">
+          <label class="fl">eGFR（自動計算）<span class="unit">mL/分/1.73m²</span></label>
+          <div class="auto-field" id="egfr">年齢・性別・Creを入力で計算</div>
+          <div class="fmsg" id="egfr-msg"></div>
+        </div>
+      </div>
+      <div class="form-group" style="max-width:200px; margin-top:4px;">
+        <label class="fl">BUN/Cre 比（自動計算）</label>
+        <div class="auto-field" id="bunCreRatio">&#x2014;</div>
+      </div>
+
+      <div class="sec-label">血糖</div>
+      <div class="gridAuto">
+        <div class="form-group">
+          <label class="fl" for="glu">Glu <span class="req">*</span> <span class="unit">mg/dL</span> <span class="range-hint">(20〜1000)</span></label>
+          <input type="number" id="glu" min="20" max="1000" placeholder="例: 105" oninput="validate()">
+          <div class="fmsg" id="glu-msg"></div>
+        </div>
+      </div>
+
+      <div class="sec-label">栄養指標</div>
+      <div class="grid2">
+        <div class="form-group">
+          <label class="fl" for="tp">TP <span class="unit">g/dL</span> <span class="range-hint">(3.0〜10.0)</span></label>
+          <input type="number" id="tp" min="3.0" max="10.0" step="0.1" placeholder="例: 6.8" oninput="validate()">
+          <div class="fmsg" id="tp-msg"></div>
+        </div>
+        <div class="form-group">
+          <label class="fl" for="alb">Alb <span class="unit">g/dL</span> <span class="range-hint">(1.0〜6.0)</span></label>
+          <input type="number" id="alb" min="1.0" max="6.0" step="0.1" placeholder="例: 3.5" oninput="validate()">
+          <div class="fmsg" id="alb-msg"></div>
+        </div>
+      </div>
+
+      <div class="sec-label">血算</div>
+      <div class="grid2">
+        <div class="form-group">
+          <label class="fl" for="hb">Hb <span class="unit">g/dL</span> <span class="range-hint">(3.0〜25.0)</span></label>
+          <input type="number" id="hb" min="3.0" max="25.0" step="0.1" placeholder="例: 13.5" oninput="validate()">
+          <div class="fmsg" id="hb-msg"></div>
+        </div>
+        <div class="form-group">
+          <label class="fl" for="hct">Hct <span class="unit">%</span> <span class="range-hint">(10〜70)</span></label>
+          <input type="number" id="hct" min="10" max="70" step="0.1" placeholder="例: 40.0" oninput="validate()">
+          <div class="fmsg" id="hct-msg"></div>
+        </div>
+      </div>
+
+      <div class="sec-label">&#x2764; 心不全マーカー</div>
+      <div class="gridAuto">
+        <div class="form-group">
+          <label class="fl" for="bnp">BNP <span class="unit">pg/mL</span> <span class="range-hint">(0〜50000) ※任意・推奨</span></label>
+          <input type="number" id="bnp" min="0" max="50000" placeholder="例: 85" oninput="validate()">
+          <div class="fmsg" id="bnp-msg"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== SECTION 5: ストレス係数 ===== -->
+  <div class="card" id="card5">
+    <div class="card-header" onclick="toggleCard('card5')">
+      <span class="c-icon">S5</span>
+      <h2>セクション 5 &#x2014; 侵襲・ストレス状態</h2>
+      <span class="c-status waiting" id="s5-status">入力待ち</span>
+      <span class="c-toggle" id="c-toggle5">&#9660;</span>
+    </div>
+    <div class="card-body" id="card5-body">
+      <div class="stress-grid" id="stressGrid">
+        <label class="stress-opt" id="sf-1.0">
+          <input type="radio" name="stress" value="1.0" onchange="validate()">
+          <span class="stress-coef">×1.0</span>
+          <span class="stress-desc">安静時・飢餓状態</span>
+        </label>
+        <label class="stress-opt" id="sf-1.1">
+          <input type="radio" name="stress" value="1.1" onchange="validate()">
+          <span class="stress-coef">×1.1</span>
+          <span class="stress-desc">軽度手術後</span>
+        </label>
+        <label class="stress-opt" id="sf-1.2">
+          <input type="radio" name="stress" value="1.2" onchange="validate()">
+          <span class="stress-coef">×1.2</span>
+          <span class="stress-desc">中等度手術後・骨折</span>
+        </label>
+        <label class="stress-opt" id="sf-1.3">
+          <input type="radio" name="stress" value="1.3" onchange="validate()">
+          <span class="stress-coef">×1.3</span>
+          <span class="stress-desc">敗血症・人工呼吸管理</span>
+        </label>
+        <label class="stress-opt" id="sf-1.5">
+          <input type="radio" name="stress" value="1.5" onchange="validate()">
+          <span class="stress-coef">×1.5</span>
+          <span class="stress-desc">重症感染症・多発外傷</span>
+        </label>
+        <label class="stress-opt" id="sf-1.7">
+          <input type="radio" name="stress" value="1.7" onchange="validate()">
+          <span class="stress-coef">×1.7</span>
+          <span class="stress-desc">重度熱傷（体表面積20〜40%）</span>
+        </label>
+        <label class="stress-opt" id="sf-2.0">
+          <input type="radio" name="stress" value="2.0" onchange="validate()">
+          <span class="stress-coef">×2.0</span>
+          <span class="stress-desc">広範囲熱傷（体表面積 &gt;40%）</span>
+        </label>
+      </div>
+      <div class="fmsg err" id="stress-msg" style="margin-top:8px;"></div>
+    </div>
+  </div>
+
+  <!-- ===== PHASE 2 RESULTS ===== -->
+  <div class="card" id="card-p2" style="display:none;">
+    <div class="card-header" style="background:linear-gradient(135deg,#1565C0,#0D47A1);border-bottom:2px solid #0D47A1;cursor:default;">
+      <span class="c-icon" style="color:#fff;">P2</span>
+      <h2 style="color:#fff;">第2段階 &#x2014; 脱水タイプ分類・水分欠乏量計算・輸液計画</h2>
+    </div>
+    <div class="card-body" id="p2-body"></div>
+  </div>
+
+  <!-- ===== FOOTER ===== -->
+  <div class="footer-bar">
+    <span class="footer-stat" id="footerStat">必須項目を入力してください</span>
+    <div style="display:flex;gap:8px;">
+      <button class="btn-sample" onclick="toggleSamplePanel()">症例一覧</button>
+      <button class="btn-reset" onclick="resetAll()">リセット</button>
+      <button class="btn-next" id="btnNext" disabled onclick="goNext()">第2段階へ進む &#x2192;</button>
+    </div>
+  </div>
+
+</div><!-- /main -->
+
+<script src="main.js" defer></script>
+</body>
+</html>
