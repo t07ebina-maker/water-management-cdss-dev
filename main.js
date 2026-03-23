@@ -783,6 +783,9 @@ function goNext() {
     dlabel = classMode === 'posm' ? '等張性脱水　Posm ' + classVal + ' mOsm/L' : '等張性脱水　Na ' + naVal + ' mEq/L';
     dbasis = '水分と電解質がほぼ等比で失われている。乳酸リンゲル/酢酸リンゲル/生食などの等張液で補充。';
   }
+  const classifyByNaOnly = naVal === null ? '不明' : (naVal > 145 ? '高張性脱水' : (naVal < 135 ? '低張性脱水' : '等張性脱水'));
+  const classifyByPosm = posm === null ? null : (posm > 295 ? '高張性脱水' : (posm < 285 ? '低張性脱水' : '等張性脱水'));
+  const criticalTitles = alerts.critical.map(a => a.title);
 
   // --- 2. 体重減少の質的判定 ---
   const wloss = getWeightLossType(weightDays, deltaW, stress);
@@ -892,23 +895,18 @@ function goNext() {
   h += `<div class="band"><div class="band-title blue">総合判定</div><div class="band-body">`;
   h += `<table class="p2-tbl">`;
   h += row('脱水タイプ', `<span class="p2-type-badge ${dcolor}" style="padding:3px 10px;font-size:13px;">${dlabel}</span>`, dbasis.substring(0,50)+'…');
-  if (classMode === 'posm' && naVal !== null) {
-    const naCategory = naVal > 145 ? '高張性' : naVal < 135 ? '低張性' : '等張性';
-    const posmCategory = posm > 295 ? '高張性' : posm < 285 ? '低張性' : '等張性';
-    const mismatch = naCategory !== posmCategory;
-    const posmNote = mismatch
-      ? `※ NaからはNaCategory（${naCategory}）と推定されますが、Posmを優先して${posmCategory}と判定しています。`
-      : `※ Posmを優先して判定しています（Naとの整合あり）。`;
-    h += `<tr><td colspan="3" style="font-size:11px;color:#555;padding:4px 8px;background:#f5f5f5;border-radius:4px;">`
-      + `本ツールはNa・Glu・BUNから算出したPosmが得られる場合、血清Na単独よりPosmを優先して脱水タイプを判定します。`
-      + (mismatch ? `　<strong style="color:#E65100;">見かけ上のNa区分（${naCategory}）と最終判定（${posmCategory}）が一致していません。</strong>` : '')
-      + `</td></tr>`;
-  }
   h += row('血清浸透圧', posm !== null ? posm + ' mOsm/L' : '（Na・Glu・BUN を入力すると算出）', '正常: 285〜295');
   h += row('eGFR / CKD', egfrVal !== null ? egfrVal + ' mL/分/1.73m²' : '（Cre 未入力）', egfrStg);
   h += row('Shock Index', si !== null ? si : '（HR・SBP 未入力）', si !== null ? (si > 1.0 ? '[Critical]' : si > 0.8 ? '[Warning]' : '正常') : '');
   h += row('BUN/Cre 比', bunCre !== null ? bunCre : '（BUN・Cre 未入力）', bunCre !== null ? (bunCre > 20 ? '腎前性脱水を示唆' : bunCre < 10 ? '低栄養・過剰輸液の可能性' : '正常') : '');
-  h += '</table></div></div>';
+  h += '</table>';
+  if (classMode === 'posm') {
+    const posmConsistency = classifyByPosm && classifyByNaOnly !== '不明' && classifyByNaOnly !== classifyByPosm
+      ? `Na単独では${classifyByNaOnly}相当ですが、Posmを優先して${classifyByPosm}として判定しています。`
+      : 'Posmを優先して脱水タイプを判定しています。';
+    h += `<div class="p2-rec">本ツールはNa・Glu・BUNから算出したPosmを判定に優先して使用しています。そのため、血清Na単独での印象と脱水タイプが一致しないことがあります。判定根拠は Posm ${posm} mOsm/L を参照してください。<br>${posmConsistency}</div>`;
+  }
+  h += '</div></div>';
 
   // 体重減少の質的判定
   h += `<div class="band"><div class="band-title blue">体重減少の質的判定</div><div class="band-body">`;
@@ -991,19 +989,11 @@ function goNext() {
     h += `<div class="p2-rec" style="margin-top:10px;">${fluidPlan.steps.map((s,i)=>`${i+1}. ${s}`).join('<br>')}</div>`;
     h += '</div></div>';
   } else {
-    // Critical アラートあり → プロトコル非表示・代替メッセージ表示
-    const critTitles = alerts.critical.map(a => a.title).join('　/　');
-    h += `<div class="band"><div class="band-title" style="background:#C62828;color:#fff;">推奨輸液プロトコル — 表示停止中</div><div class="band-body">`;
-    h += `<div class="p2-stop" style="margin-bottom:10px;">`;
-    h += `Criticalアラートが発生しています。まず医師へ報告し、循環動態・呼吸状態・意識状態の安定化を優先してください。`;
-    h += `</div>`;
-    h += `<div style="font-size:12px;color:#555;margin-top:6px;">`;
-    h += `<strong>停止理由：</strong>${critTitles}`;
-    h += `</div>`;
-    h += `<div style="font-size:12px;color:#555;margin-top:8px;">`;
-    h += `状態が安定したら再入力・再計算を行い、プロトコルを確認してください。`;
-    h += `</div>`;
-    h += '</div></div>';
+    h += `<div class="band"><div class="band-title orange">推奨輸液プロトコルは表示していません</div><div class="band-body">`;
+    h += `<div class="p2-crit-list"><strong>Criticalアラートが確認されています。</strong><br>本ツールでの輸液計算より先に、医師への報告と全身状態の安定化を優先してください。循環動態・呼吸状態・意識状態の確認を最初に行ってください。</div>`;
+    h += `<div class="p2-stop">非表示の理由: ${criticalTitles.join(' / ')}</div>`;
+    h += `<div class="p2-rec" style="margin-top:10px;">安全確認後に再評価し、Criticalアラートが解消した時点で推奨輸液プロトコルを参照してください。最終的な輸液方針は必ず医師の指示に基づいて判断してください。</div>`;
+    h += `</div></div>`;
   }
 
   // Na補正速度安全計算
