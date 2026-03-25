@@ -1,4 +1,4 @@
-// ============================================================
+﻿// ============================================================
 //  STATE
 // ============================================================
 let consciousnessMode = 'jcs'; // 'jcs' | 'gcs'
@@ -453,7 +453,7 @@ function validate() {
     } else if (egfrVal < 30) {
       eState = 'calc-warn';
       eMsg = '高度低下';
-      alerts.warning.push({ title: '高度腎機能障害 (G4)', msg: `eGFR ${egfrVal} mL/分/1.73m²。K含有輸液は慎重に。投与量を通常の50〜75%に減量。` });
+      alerts.warning.push({ title: '高度腎機能障害 (G4)', msg: `eGFR ${egfrVal} mL/分/1.73m²。K含有輸液は慎重に。投与量を通常の75%に制限し、尿量・K・呼吸状態を再評価してください。` });
     } else if (egfrVal < 45) {
       eState = 'calc-warn';
       eMsg = '中等度〜高度低下';
@@ -520,9 +520,9 @@ function validate() {
   if (!bnpR.ok) s4Errors++;
   if (bnpR.ok && bnpR.val !== null) {
     if (bnpR.val > 500 || (edema && rales)) {
-      alerts.warning.push({ title: '重症心不全の疑い', msg: `BNP ${bnpR.val} pg/mL > 500（または浮腫＋ラ音）。輸液量を通常の50〜75%に制限。心不全症状を注意深く観察してください。（※BNP閾値は心不全の診断閾値ではなく、本ツールで慎重投与判断のために採用した安全上の参考閾値です）` });
+      alerts.warning.push({ title: '重症心不全または溢水', msg: `BNP ${bnpR.val} pg/mL > 500（または浮腫＋ラ音）。輸液量を通常の50%に制限し、呼吸状態・浮腫・尿量を注意深く観察してください。（※BNP閾値は心不全の診断閾値ではなく、本ツールで慎重投与判断のために採用した安全上の参考閾値です）` });
     } else if (bnpR.val > 200) {
-      alerts.warning.push({ title: '心不全リスク', msg: `BNP ${bnpR.val} pg/mL > 200。輸液量を通常の50〜75%に制限。4〜6時間ごとの再評価を。（※BNP閾値は心不全の診断閾値ではなく、本ツールで採用した安全上の参考閾値です）` });
+      alerts.warning.push({ title: '心不全リスクまたは腎機能障害', msg: `BNP ${bnpR.val} pg/mL > 200。輸液量を通常の75%に制限し、4〜6時間ごとに再評価してください。（※BNP閾値は心不全の診断閾値ではなく、本ツールで採用した安全上の参考閾値です）` });
     } else if (bnpR.val > 100) {
       alerts.info.push({ title: 'BNP軽度上昇', msg: `BNP ${bnpR.val} pg/mL。心不全の可能性を念頭に輸液管理を慎重に。` });
     }
@@ -712,12 +712,12 @@ function getMaintenance2(wt, age, temp) {
   const adj = Math.round(base * ff);
   return { base:Math.round(base), adjusted:adj, hourly:Math.round(adj/24*10)/10, feverF:Math.round(ff*100)/100, mode };
 }
-function buildFluidPlan2(dtype, naVal, egfr, hfRisk, kVal) {
+function buildFluidPlan2(dtype, naVal, egfr, hfRisk, kVal, volFactor = 1.0) {
   const kBad = egfr !== null && egfr < 30;
   const kCaut = egfr !== null && egfr >= 30 && egfr < 60;
   if (hfRisk) return {
-    primary:'安易な補液を避け水制限を優先', secondary:'医師へ製剤選択をコンサルト',
-    steps:['希釈性低Na血症・心不全リスクを優先評価してください。','入出量・浮腫・ラ音・BNPを再確認してください。','投与する場合も通常量の50〜75%以下から慎重に開始してください。']
+    primary:'安易な補液は避け、水制限を優先', secondary:'医師へ製剤選択をコンサルト',
+    steps:['希釈性低Na血症・心不全リスクを優先評価してください。','入出量・浮腫・ラ音・BNPを再確認してください。',`投与する場合は結果欄の制限係数に従い、通常量の${Math.round(volFactor * 100)}%から慎重に開始してください。`]
   };
   if (dtype === 'hyper') return {
     primary: kBad ? '5%ブドウ糖液（K非含有）' : '5%ブドウ糖液',
@@ -783,9 +783,6 @@ function goNext() {
     dlabel = classMode === 'posm' ? '等張性脱水　Posm ' + classVal + ' mOsm/L' : '等張性脱水　Na ' + naVal + ' mEq/L';
     dbasis = '水分と電解質がほぼ等比で失われている。乳酸リンゲル/酢酸リンゲル/生食などの等張液で補充。';
   }
-  const classifyByNaOnly = naVal === null ? '不明' : (naVal > 145 ? '高張性脱水' : (naVal < 135 ? '低張性脱水' : '等張性脱水'));
-  const classifyByPosm = posm === null ? null : (posm > 295 ? '高張性脱水' : (posm < 285 ? '低張性脱水' : '等張性脱水'));
-  const criticalTitles = alerts.critical.map(a => a.title);
 
   // --- 2. 体重減少の質的判定 ---
   const wloss = getWeightLossType(weightDays, deltaW, stress);
@@ -838,13 +835,12 @@ function goNext() {
   const hfRisk     = hfSevere || hfCaution;
 
   // --- 6. 輸液剤・プロトコル ---
-  const fluidPlan = buildFluidPlan2(dtype, naVal, egfrVal, hfRisk, kVal);
-
-  // --- 7. 3日プロトコル（溢水・腎不全リスク時は減量） ---
-  // 減量係数: hfSevere→0.50(half maintenance), hfCaution/kRestrict/ckdCaution→0.75(three-quarter), 通常→1.00
+  // 減量係数: 重症心不全または溢水→0.50、心不全リスクまたは腎機能障害→0.75、通常→1.00
   let volFactor = 1.0, volLabel = '通常量';
-  if (hfSevere) { volFactor = 0.50; volLabel = '重症心不全/溢水 → 50%に制限（half maintenance）'; }
-  else if (hfCaution || kRestrict || ckdCaution) { volFactor = 0.75; volLabel = '心不全リスク/腎機能障害 → 75%に制限（three-quarter maintenance）'; }
+  if (hfSevere) { volFactor = 0.50; volLabel = '重症心不全または溢水では、通常の50%に制限'; }
+  else if (hfCaution || kRestrict || ckdCaution) { volFactor = 0.75; volLabel = '心不全リスクまたは腎機能障害では、通常の75%に制限'; }
+
+  const fluidPlan = buildFluidPlan2(dtype, naVal, egfrVal, hfRisk, kVal, volFactor);
 
   const adjMnt = Math.round(mnt.adjusted * volFactor);
   const proto = avgDefMl !== null && mnt.adjusted !== null ? [
@@ -895,18 +891,23 @@ function goNext() {
   h += `<div class="band"><div class="band-title blue">総合判定</div><div class="band-body">`;
   h += `<table class="p2-tbl">`;
   h += row('脱水タイプ', `<span class="p2-type-badge ${dcolor}" style="padding:3px 10px;font-size:13px;">${dlabel}</span>`, dbasis.substring(0,50)+'…');
+  if (classMode === 'posm' && naVal !== null) {
+    const naCategory = naVal > 145 ? '高張性' : naVal < 135 ? '低張性' : '等張性';
+    const posmCategory = posm > 295 ? '高張性' : posm < 285 ? '低張性' : '等張性';
+    const mismatch = naCategory !== posmCategory;
+    const posmNote = mismatch
+      ? `※ NaからはNaCategory（${naCategory}）と推定されますが、Posmを優先して${posmCategory}と判定しています。`
+      : `※ Posmを優先して判定しています（Naとの整合あり）。`;
+    h += `<tr><td colspan="3" style="font-size:11px;color:#555;padding:4px 8px;background:#f5f5f5;border-radius:4px;">`
+      + `本ツールはNa・Glu・BUNから算出したPosmが得られる場合、血清Na単独よりPosmを優先して脱水タイプを判定します。`
+      + (mismatch ? `　<strong style="color:#E65100;">見かけ上のNa区分（${naCategory}）と最終判定（${posmCategory}）が一致していません。</strong>` : '')
+      + `</td></tr>`;
+  }
   h += row('血清浸透圧', posm !== null ? posm + ' mOsm/L' : '（Na・Glu・BUN を入力すると算出）', '正常: 285〜295');
   h += row('eGFR / CKD', egfrVal !== null ? egfrVal + ' mL/分/1.73m²' : '（Cre 未入力）', egfrStg);
   h += row('Shock Index', si !== null ? si : '（HR・SBP 未入力）', si !== null ? (si > 1.0 ? '[Critical]' : si > 0.8 ? '[Warning]' : '正常') : '');
   h += row('BUN/Cre 比', bunCre !== null ? bunCre : '（BUN・Cre 未入力）', bunCre !== null ? (bunCre > 20 ? '腎前性脱水を示唆' : bunCre < 10 ? '低栄養・過剰輸液の可能性' : '正常') : '');
-  h += '</table>';
-  if (classMode === 'posm') {
-    const posmConsistency = classifyByPosm && classifyByNaOnly !== '不明' && classifyByNaOnly !== classifyByPosm
-      ? `Na単独では${classifyByNaOnly}相当ですが、Posmを優先して${classifyByPosm}として判定しています。`
-      : 'Posmを優先して脱水タイプを判定しています。';
-    h += `<div class="p2-rec">本ツールはNa・Glu・BUNから算出したPosmを判定に優先して使用しています。そのため、血清Na単独での印象と脱水タイプが一致しないことがあります。判定根拠は Posm ${posm} mOsm/L を参照してください。<br>${posmConsistency}</div>`;
-  }
-  h += '</div></div>';
+  h += '</table></div></div>';
 
   // 体重減少の質的判定
   h += `<div class="band"><div class="band-title blue">体重減少の質的判定</div><div class="band-body">`;
@@ -943,7 +944,7 @@ function goNext() {
   h += row('基本維持量', mnt.base !== null ? mnt.base.toLocaleString() + ' mL/日' : '—', mnt.mode);
   h += row('発熱補正係数', mnt.feverF !== 1 ? '× ' + mnt.feverF : '× 1.00（37℃以下）', '37℃超1℃ごとに +15%');
   h += row('補正後維持量', mnt.adjusted !== null ? mnt.adjusted.toLocaleString() + ' mL/日' : '—', mnt.hourly !== null ? mnt.hourly + ' mL/時' : '');
-  h += `</table><div style="margin-top:6px;font-size:11px;color:#666;">※ 成人27.5 mL/kg/日・高齢者22.5 mL/kg/日は、ガイドライン範囲（25-30 / 20-25）の中間値として本ツールで採用した参考値です。小児Holliday-Segarは文献整合的です。</div></div></div>`;
+  h += `</table><div style="margin-top:6px;font-size:11px;color:#666;">※ 成人27.5 mL/kg/日・高齢者22.5 mL/kg/日は、NICE CG174推奨範囲（25-30 / 20-25）の中間値として本ツールで採用した参考値です。ただし、NICE CG174は重症腎疾患（severe renal disease）を適用除外としています。小児Holliday-Segarは文献整合的です。</div></div></div>`;
 
   // 推奨輸液プロトコル（Critical でなければ表示）
   if (alerts.critical.length === 0) {
@@ -989,11 +990,19 @@ function goNext() {
     h += `<div class="p2-rec" style="margin-top:10px;">${fluidPlan.steps.map((s,i)=>`${i+1}. ${s}`).join('<br>')}</div>`;
     h += '</div></div>';
   } else {
-    h += `<div class="band"><div class="band-title orange">推奨輸液プロトコルは表示していません</div><div class="band-body">`;
-    h += `<div class="p2-crit-list"><strong>Criticalアラートが確認されています。</strong><br>本ツールでの輸液計算より先に、医師への報告と全身状態の安定化を優先してください。循環動態・呼吸状態・意識状態の確認を最初に行ってください。</div>`;
-    h += `<div class="p2-stop">非表示の理由: ${criticalTitles.join(' / ')}</div>`;
-    h += `<div class="p2-rec" style="margin-top:10px;">安全確認後に再評価し、Criticalアラートが解消した時点で推奨輸液プロトコルを参照してください。最終的な輸液方針は必ず医師の指示に基づいて判断してください。</div>`;
-    h += `</div></div>`;
+    // Critical アラートあり → プロトコル非表示・代替メッセージ表示
+    const critTitles = alerts.critical.map(a => a.title).join('　/　');
+    h += `<div class="band"><div class="band-title" style="background:#C62828;color:#fff;">推奨輸液プロトコル — 表示停止中</div><div class="band-body">`;
+    h += `<div class="p2-stop" style="margin-bottom:10px;">`;
+    h += `Criticalアラートが発生しています。まず医師へ報告し、循環動態・呼吸状態・意識状態の安定化を優先してください。`;
+    h += `</div>`;
+    h += `<div style="font-size:12px;color:#555;margin-top:6px;">`;
+    h += `<strong>停止理由：</strong>${critTitles}`;
+    h += `</div>`;
+    h += `<div style="font-size:12px;color:#555;margin-top:8px;">`;
+    h += `状態が安定したら再入力・再計算を行い、プロトコルを確認してください。`;
+    h += `</div>`;
+    h += '</div></div>';
   }
 
   // Na補正速度安全計算
@@ -1026,7 +1035,7 @@ function goNext() {
   h += '</div></div>';
 
   // 免責
-  h += `<div class="p2-disclaimer">本ツールの計算結果はあくまで参考値であり、「診断」を行うものではありません。輸液処方は必ず医師の指示に基づき、患者の臨床症状・バイタルサイン・尿量・体重などを定期的に再評価しながら実施してください。<br>計算根拠：体重法（組織異化補正済み）、Na法（Adrogue-Madias原理）、Hct法（TBW×[1−基準Hct/実測Hct]）、TP法（TBW×[TP/7.0−1]）。維持輸液：小児Holliday-Segar / 高齢者22.5 / 成人27.5 mL/kg/日 ± 発熱補正（ガイドライン範囲の中間値として本ツールで採用した参考値）。Posm = 2×Na + Glu/18 + BUN/2.8。<br>BNP閾値（200/500 pg/mL）は心不全の診断閾値ではなく、本ツールで慎重投与判断のために採用した安全上の参考閾値です。Na補正の急性/慢性判定はNa異常の発症時期ではなく、体重変化日数を代用指標とした参考判定です。正確には病歴聴取と再検査で補完してください。<br>参照: JSPEN、日本腎臓学会CKDガイドライン2012、Matsuo et al. 2009（日本人eGFR式）、日本循環器学会心不全ガイドライン、Adrogue HJ et al. NEJM 2000。</div>`;
+  h += `<div class="p2-disclaimer">本ツールの計算結果はあくまで参考値であり、「診断」を行うものではありません。輸液処方は必ず医師の指示に基づき、患者の臨床症状・バイタルサイン・尿量・体重などを定期的に再評価しながら実施してください。<br>計算根拠：体重法（組織異化補正済み）、Na法（Adrogue-Madias原理）、Hct法（TBW×[1−基準Hct/実測Hct]）、TP法（TBW×[TP/7.0−1]）。維持輸液：小児Holliday-Segar / 高齢者22.5 / 成人27.5 mL/kg/日 ± 発熱補正（NICE CG174推奨範囲の中間値として本ツールで採用した参考値。ただしNICE CG174は重症腎疾患を適用除外としている）。Posm = 2×Na + Glu/18 + BUN/2.8。<br>BNP閾値（200/500 pg/mL）は心不全の診断閾値ではなく、本ツールで慎重投与判断のために採用した安全上の参考閾値です。Na補正の急性/慢性判定はNa異常の発症時期ではなく、体重変化日数を代用指標とした参考判定です。正確には病歴聴取と再検査で補完してください。<br>参照文献:<br>1. McDonagh, T. A., et al. (2021). 2021 ESC Guidelines for the diagnosis and treatment of acute and chronic heart failure. European Heart Journal, 42, 3599-3726. doi: 10.1093/eurheartj/ehab368<br>2. 日本循環器学会 / 日本心不全学会. (2025). 2025年改訂版 心不全診療ガイドライン. https://www.j-circ.or.jp/cms/wp-content/uploads/2025/03/JCS2025_Kato.pdf<br>3. National Institute for Health and Care Excellence. (2013, updated 2016). Intravenous fluid therapy in adults in hospital (CG174). https://www.nice.org.uk/guidance/cg174<br>4. 日本腎臓学会. (2012). エビデンスに基づくCKD診療ガイドライン2012. 東京医学社.<br>5. Matsuo, S., Imai, E., Horio, M., et al. (2009). Revised equations for estimated GFR from serum creatinine in Japan. American Journal of Kidney Diseases, 53(6), 982-992. doi: 10.1053/j.ajkd.2008.12.034<br>6. Adrogue, H. J., &amp; Madias, N. E. (2000). Hypernatremia. New England Journal of Medicine, 342, 1493-1499. doi: 10.1056/NEJM200005253422106<br>7. Adrogue, H. J., &amp; Madias, N. E. (2000). Hyponatremia. New England Journal of Medicine, 342, 1581-1589. doi: 10.1056/NEJM200005253422107<br>8. Holliday, M. A., &amp; Segar, W. E. (1957). The maintenance need for water in parenteral fluid therapy. Pediatrics, 19(5), 823-832.<br>9. Wiedemann, H. P., et al. (2006). Comparison of two fluid-management strategies in acute lung injury (FACTT Trial). New England Journal of Medicine, 354, 2564-2575. doi: 10.1056/NEJMoa062200<br>10. 日本静脈経腸栄養学会 (JSPEN). (2013). 静脈経腸栄養ガイドライン 第3版. 照林社.</div>`;
   h += `<button class="p2-print-btn" onclick="window.print()">印刷 / PDF 保存</button>`;
 
   document.getElementById('p2-body').innerHTML = h;
@@ -1480,3 +1489,4 @@ window.addEventListener('DOMContentLoaded', () => {
   // 初期バリデーション
   validate();
 });
+
