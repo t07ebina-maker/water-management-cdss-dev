@@ -844,9 +844,9 @@ function goNext() {
 
   const adjMnt = Math.round(mnt.adjusted * volFactor);
   const proto = avgDefMl !== null && mnt.adjusted !== null ? [
-    { day:'Day 1', def:Math.round(avgDefMl/3 * volFactor), note:'欠乏量の1/3' + (volFactor < 1 ? '（減量適用）' : '') + 'から開始' },
-    { day:'Day 2', def:Math.round(avgDefMl*2/3 * volFactor), note:'残り2/3を補正' + (volFactor < 1 ? '（減量適用）' : '') + '、Na・尿量を再評価' },
-    { day:'Day 3', def:0, note:'維持中心。経口移行を検討' }
+    { day:'Day 1', def:Math.round(avgDefMl/3 * volFactor), note:'提案値。医師承認後に実施' + (volFactor < 1 ? '（減量適用）' : '') + '。' },
+    { day:'Day 2', def:Math.round(avgDefMl*2/3 * volFactor), note:'参考試算。4〜8時間後の再評価後に医師と再協議' + (volFactor < 1 ? '（減量適用）' : '') + '。' },
+    { day:'Day 3', def:0, note:'参考試算。Day 2再評価後に医師指示を再確認。維持中心・経口移行を検討' }
   ].map(r => ({ ...r, mnt:adjMnt, total:r.def+adjMnt, rate:Math.round((r.def+adjMnt)/24) })) : [];
 
   // --- 8. Na補正速度安全計算（Adrogue-Madias） ---
@@ -962,7 +962,7 @@ function goNext() {
       h += row('減量後維持量', adjMnt.toLocaleString() + ' mL/日 (' + Math.round(adjMnt/24) + ' mL/時)', `× ${Math.round(volFactor*100)}%`);
     }
     h += '</table>';
-    h += `<div class="p2-rec">思考支援：「欠乏補正量」と「維持輸液量」を分けて考え、合計量と速度を確認します。${volFactor < 1 ? '<br>溢水・心不全・腎障害リスクにより減量を適用しています。投与中は呼吸状態・浮腫・尿量を頻回に観察してください。' : ''}</div>`;
+    h += `<div class="p2-rec">思考支援：「欠乏補正量」と「維持輸液量」を分けて考え、合計量と速度を確認します。<br>Day 2以降は参考試算です。必ず再評価結果を携えて医師と協議し、指示を確認してから実施してください。${volFactor < 1 ? '<br>溢水・心不全・腎障害リスクにより減量を適用しています。投与中は呼吸状態・浮腫・尿量を頻回に観察してください。' : ''}</div>`;
 
     if (proto.length > 0) {
       h += `<div class="proto-grid">`;
@@ -1035,7 +1035,7 @@ function goNext() {
   h += '</div></div>';
 
   // 免責
-  h += `<div class="p2-disclaimer">本ツールの計算結果はあくまで参考値であり、「診断」を行うものではありません。輸液処方は必ず医師の指示に基づき、患者の臨床症状・バイタルサイン・尿量・体重などを定期的に再評価しながら実施してください。<br>計算根拠：体重法（組織異化補正済み）、Na法（Adrogue-Madias原理）、Hct法（TBW×[1−基準Hct/実測Hct]）、TP法（TBW×[TP/7.0−1]）。維持輸液：小児 Holliday-Segar / 高齢者22.5 / 成人27.5 mL/kg/日 ± 発熱補正（日本の運用基準を主軸としつつ、NICE CG174 を補助的に参照して本ツールで採用した参考値。ただし NICE CG174 は重症腎疾患を適用除外としている）。Posm = 2×Na + Glu/18 + BUN/2.8。<br>BNP閾値（200/500 pg/mL）は心不全の診断閾値ではなく、本ツールで慎重投与判断のために採用した安全上の参考閾値です。Na補正の急性/慢性判定はNa異常の発症時期ではなく、体重変化日数を代用指標とした参考判定です。正確には病歴聴取と再検査で補完してください。<br>参照文献:<br>1. 日本循環器学会 / 日本心不全学会. (2025). 2025年改訂版 心不全診療ガイドライン. https://www.j-circ.or.jp/cms/wp-content/uploads/2025/03/JCS2025_Kato.pdf<br>2. 日本腎臓学会. (2012). エビデンスに基づくCKD診療ガイドライン2012. 東京医学社.<br>3. Matsuo, S., Imai, E., Horio, M., et al. (2009). Revised equations for estimated GFR from serum creatinine in Japan. American Journal of Kidney Diseases, 53(6), 982-992. doi: 10.1053/j.ajkd.2008.12.034<br>4. 日本静脈経腸栄養学会. (2013). 静脈経腸栄養ガイドライン 第3版. 照林社.<br>5. Holliday, M. A., &amp; Segar, W. E. (1957). The maintenance need for water in parenteral fluid therapy. Pediatrics, 19(5), 823-832.<br>6. McDonagh, T. A., et al. (2021). 2021 ESC Guidelines for the diagnosis and treatment of acute and chronic heart failure. European Heart Journal, 42, 3599-3726. doi: 10.1093/eurheartj/ehab368<br>7. National Institute for Health and Care Excellence. (2013, updated 2016). Intravenous fluid therapy in adults in hospital (CG174). https://www.nice.org.uk/guidance/cg174<br>8. Adrogue, H. J., &amp; Madias, N. E. (2000). Hypernatremia. New England Journal of Medicine, 342, 1493-1499. doi: 10.1056/NEJM200005253422106<br>9. Adrogue, H. J., &amp; Madias, N. E. (2000). Hyponatremia. New England Journal of Medicine, 342, 1581-1589. doi: 10.1056/NEJM200005253422107<br>10. Wiedemann, H. P., et al. (2006). Comparison of two fluid-management strategies in acute lung injury (FACTT Trial). New England Journal of Medicine, 354, 2564-2575. doi: 10.1056/NEJMoa062200</div>`;
+  h += `<div class="p2-disclaimer">本ツールの計算結果はあくまで参考値であり、「診断」を行うものではありません。輸液処方は必ず医師の指示に基づき、患者の臨床症状・バイタルサイン・尿量・体重などを定期的に再評価しながら実施してください。<br>計算根拠：体重法（組織異化補正済み）、Na法（Adrogue-Madias原理）、Hct法（TBW×[1−基準Hct/実測Hct]）、TP法（TBW×[TP/7.0−1]）。維持輸液：小児 Holliday-Segar / 高齢者22.5 / 成人27.5 mL/kg/日 ± 発熱補正（日本の運用基準を主軸としつつ、NICE CG174 を補助的に参照して本ツールで採用した参考値。ただし NICE CG174 は重症腎疾患を適用除外としている）。Posm = 2×Na + Glu/18 + BUN/2.8。<br>BNP閾値（200/500 pg/mL）は心不全の診断閾値ではなく、本ツールで慎重投与判断のために採用した安全上の参考閾値です。Na補正の急性/慢性判定はNa異常の発症時期ではなく、体重変化日数を代用指標とした参考判定です。正確には病歴聴取と再検査で補完してください。<br>参照文献:<br>1. 日本循環器学会 / 日本心不全学会. (2025). 2025年改訂版 心不全診療ガイドライン. https://www.j-circ.or.jp/cms/wp-content/uploads/2025/03/JCS2025_Kato.pdf<br>2. 日本腎臓学会. (2012). エビデンスに基づくCKD診療ガイドライン2012. 東京医学社.<br>3. Matsuo, S., Imai, E., Horio, M., et al. (2009). Revised equations for estimated GFR from serum creatinine in Japan. American Journal of Kidney Diseases, 53(6), 982-992. doi: 10.1053/j.ajkd.2008.12.034<br>4. 日本静脈経腸栄養学会. (2013). 静脈経腸栄養ガイドライン 第3版. 照林社.<br>5. Holliday, M. A., &amp; Segar, W. E. (1957). The maintenance need for water in parenteral fluid therapy. Pediatrics, 19(5), 823-832.<br>6. McDonagh, T. A., et al. (2021). 2021 ESC Guidelines for the diagnosis and treatment of acute and chronic heart failure. European Heart Journal, 42, 3599-3726. doi: 10.1093/eurheartj/ehab368<br>7. National Institute for Health and Care Excellence. (2013, updated 2016). Intravenous fluid therapy in adults in hospital (CG174). https://www.nice.org.uk/guidance/cg174<br>8. Adrogue, H. J., &amp; Madias, N. E. (2000). Hypernatremia. New England Journal of Medicine, 342, 1493-1499. doi: 10.1056/NEJM200005253422106<br>9. Adrogue, H. J., &amp; Madias, N. E. (2000). Hyponatremia. New England Journal of Medicine, 342, 1581-1589. doi: 10.1056/NEJM200005253422107<br>10. Wiedemann, H. P., et al. (2006). Comparison of two fluid-management strategies in acute lung injury. New England Journal of Medicine, 354, 2564-2575. doi: 10.1056/NEJMoa062200</div>`;
   h += `<button class="p2-print-btn" onclick="window.print()">印刷 / PDF 保存</button>`;
 
   document.getElementById('p2-body').innerHTML = h;
@@ -1489,4 +1489,5 @@ window.addEventListener('DOMContentLoaded', () => {
   // 初期バリデーション
   validate();
 });
+
 
