@@ -670,7 +670,7 @@ function validate() {
   } else {
     badge.className = 'status-badge waiting'; badge.textContent = '入力待ち';
     btnNext.disabled = true;
-    footerStat.textContent = '必須項目を入力してください。';
+    footerStat.textContent = '必須項目を入力してください';
   }
 }
 
@@ -746,7 +746,7 @@ function resetAll() {
   document.getElementById('statusBadge').className = 'status-badge waiting'; document.getElementById('statusBadge').textContent = '入力待ち';
   ['critCount','warnCount','infoCount'].forEach(id => { const el = document.getElementById(id); el.textContent = '0'; el.className = 'status-badge waiting'; });
   document.getElementById('btnNext').disabled = true;
-  document.getElementById('footerStat').textContent = '必須項目を入力してください。';
+  document.getElementById('footerStat').textContent = '必須項目を入力してください';
 }
 
 // ============================================================
