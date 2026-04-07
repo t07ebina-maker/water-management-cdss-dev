@@ -31,6 +31,9 @@ function switchConsciousness(mode) {
   document.getElementById('jcs-area').style.display = mode === 'jcs' ? '' : 'none';
   document.getElementById('gcs-area').style.display = mode === 'gcs' ? '' : 'none';
   validate();
+  setTimeout(() => {
+    focusField(document.getElementById(mode === 'jcs' ? 'jcs' : 'gcsE'));
+  }, 60);
 }
 function switchUrine(mode) {
   urineMode = mode;
@@ -39,10 +42,87 @@ function switchUrine(mode) {
   document.getElementById('urine-h-area').style.display = mode === 'h' ? '' : 'none';
   document.getElementById('urine-d-area').style.display = mode === 'd' ? '' : 'none';
   validate();
+  setTimeout(() => {
+    focusField(document.getElementById(mode === 'h' ? 'urineH' : 'urineD'));
+  }, 60);
 }
 function setStress(val) {
   document.querySelectorAll('.stress-opt').forEach(el => {
     el.classList.toggle('selected', el.querySelector('input').value === val);
+  });
+}
+
+// ============================================================
+//  FOCUS FLOW
+// ============================================================
+function isFocusableField(el) {
+  if (!el || el.disabled) return false;
+  if (!el.offsetParent && getComputedStyle(el).position !== 'fixed') return false;
+  return true;
+}
+
+function getFocusFlowIds() {
+  const ids = [
+    'age', 'sex', 'height',
+    'usuWeight', 'usuWeightDate', 'curWeight', 'curWeightDate',
+    ...(consciousnessMode === 'jcs' ? ['jcs'] : ['gcsE', 'gcsV', 'gcsM']),
+    'sbp', 'dbp', 'hr', 'rr', 'spo2', 'temp',
+    ...(urineMode === 'h' ? ['urineH'] : ['urineD']),
+    'cpAngle',
+    'na', 'k', 'cl', 'bun', 'cre', 'glu', 'tp', 'alb', 'hb', 'hct', 'bnp'
+  ];
+
+  return ids
+    .map(id => document.getElementById(id))
+    .filter(isFocusableField);
+}
+
+function focusField(el) {
+  if (!isFocusableField(el)) return false;
+  el.focus({ preventScroll: false });
+  if (typeof el.select === 'function' && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
+    el.select();
+  }
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  return true;
+}
+
+function focusNextFrom(currentId) {
+  const flow = getFocusFlowIds();
+  const idx = flow.findIndex(el => el.id === currentId);
+  if (idx === -1) return false;
+  const next = flow[idx + 1];
+  return next ? focusField(next) : false;
+}
+
+function setupFocusFlow() {
+  const ids = [
+    'age', 'sex', 'height',
+    'usuWeight', 'usuWeightDate', 'curWeight', 'curWeightDate',
+    'jcs', 'gcsE', 'gcsV', 'gcsM',
+    'sbp', 'dbp', 'hr', 'rr', 'spo2', 'temp',
+    'urineH', 'urineD',
+    'cpAngle',
+    'na', 'k', 'cl', 'bun', 'cre', 'glu', 'tp', 'alb', 'hb', 'hct', 'bnp'
+  ];
+
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+
+    if (el.tagName === 'INPUT' && el.type !== 'date' && el.type !== 'checkbox' && el.type !== 'radio') {
+      el.addEventListener('keydown', evt => {
+        if (evt.key !== 'Enter') return;
+        evt.preventDefault();
+        focusNextFrom(id);
+      });
+    }
+
+    if (el.tagName === 'SELECT' || (el.tagName === 'INPUT' && el.type === 'date')) {
+      el.addEventListener('change', () => {
+        setTimeout(() => focusNextFrom(id), 60);
+      });
+    }
   });
 }
 
@@ -1486,6 +1566,8 @@ window.addEventListener('DOMContentLoaded', () => {
   // usuWeightDate は空欄のまま（利用者が測定日時を入力する）
   // サンプルカードを構築
   buildSampleCards();
+  // 入力欄のフォーカス移動
+  setupFocusFlow();
   // 初期バリデーション
   validate();
 });
