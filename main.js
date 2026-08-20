@@ -868,7 +868,7 @@ function goNext() {
   const refHct  = getRefHct(sex);
   const baseWt  = usualWeight || curWeight; // prefer usual weight for deficit calc
 
-  // --- 血清浸透圧 (Posm) ---
+  // --- 推算血清浸透圧 (Posm) ---
   const posm = (naVal !== null && gluVal !== null && bunVal !== null)
     ? Math.round((2 * naVal + gluVal / 18 + bunVal / 2.8) * 10) / 10
     : null;
@@ -919,11 +919,12 @@ function goNext() {
   // TP法
   let tpDef = null, tpDefNote = '';
   if (tpVal !== null && baseWt && tbwCoef) {
-    const raw = Math.round((tpVal / 7.0 - 1) * baseWt * tbwCoef * 1000);
+    // V1.7: 簡易式 (1 - 基準TP / 現TP) へ訂正。
+    const raw = Math.round((1 - 7.0 / tpVal) * baseWt * tbwCoef * 1000);
     if (raw <= 0) { tpDefNote = 'TP ' + tpVal + ' < 7.0 → 血液希釈（不算入）'; }
     else {
       tpDef = raw;
-      tpDefNote = '(TP ' + tpVal + '/7.0 − 1) × ' + baseWt + 'kg × ' + tbwCoef;
+      tpDefNote = '(1 − 7.0/TP ' + tpVal + ') × ' + baseWt + 'kg × ' + tbwCoef;
       if (tpVal < 6.0) tpDefNote += '【TP<6.0: 低栄養による過大評価の可能性】';
     }
   } else { tpDefNote = 'TP 未入力'; }
@@ -1010,11 +1011,11 @@ function goNext() {
       ? `※ NaからはNaCategory（${naCategory}）と推定されますが、Posmを優先して${posmCategory}と判定しています。`
       : `※ Posmを優先して判定しています（Naとの整合あり）。`;
     h += `<tr><td colspan="3" style="font-size:11px;color:#555;padding:4px 8px;background:#f5f5f5;border-radius:4px;">`
-      + `本ツールはNa・Glu・BUNから算出したPosmが得られる場合、血清Na単独よりPosmを優先して脱水タイプを判定します。`
+      + `本ツールはNa・Glu・BUNから推算したPosmが得られる場合、血清Na単独よりPosmを優先して脱水タイプを判定します。`
       + (mismatch ? `　<strong style="color:#E65100;">見かけ上のNa区分（${naCategory}）と最終判定（${posmCategory}）が一致していません。</strong>` : '')
       + `</td></tr>`;
   }
-  h += row('血清浸透圧', posm !== null ? posm + ' mOsm/L' : '（Na・Glu・BUN を入力すると算出）', '正常: 285〜295');
+  h += row('推算血清浸透圧', posm !== null ? posm + ' mOsm/L' : '（Na・Glu・BUN を入力すると算出）', '正常: 285〜295');
   h += row('eGFR / CKD', egfrVal !== null ? egfrVal + ' mL/分/1.73m²' : '（Cre 未入力）', egfrStg);
   h += row('Shock Index', si !== null ? si : '（HR・SBP 未入力）', si !== null ? (si > 1.0 ? '[Critical]' : si > 0.8 ? '[Warning]' : '正常') : '');
   h += row('BUN/Cre 比', bunCre !== null ? bunCre : '（BUN・Cre 未入力）', bunCre !== null ? (bunCre > 20 ? '腎前性脱水を示唆' : bunCre < 10 ? '低栄養・過剰輸液の可能性' : '正常') : '');
@@ -1123,7 +1124,7 @@ function goNext() {
     h += row('TBW', tbwL !== null ? tbwL + ' L' : '—', '体重 ' + (curWeight||'—') + ' kg × TBW係数 ' + tbwCoef);
     h += row('計算基準製剤', '5%ブドウ糖液（Na 0 / K 0 mEq/L）', '他製剤ではNa変化速度が異なります');
     h += row('1L 投与時のNa変化量', adroguePerL !== null ? adroguePerL + ' mEq/L' : '—', 'Adrogue-Madias 式');
-    h += row('1時間あたり', naChgH !== null ? naChgH + ' mEq/L/h' : '—', `<span style="${naSafetyClass}">${naSafetyLabel}</span>`);
+    h += row('1時間あたり', naChgH !== null ? naChgH + ' mEq/L/h' : '—', `<span style="${naSafetyClass}">${naSafetyLabel}</span>（5%ブドウ糖液1L/24時間を仮定）`);
     h += '</table>';
     h += `<div class="p2-warn-line">慢性高Na血症・慢性低Na血症では 0.5 mEq/L/h 以下が最重要です（ODS・脳障害予防）。</div>`;
     h += `<div class="p2-warn-line" style="margin-top:4px;">※ 急性/慢性の判定は体重変化日数（${weightDays !== null ? weightDays + '日' : '不明'}）で代用しています。正確にはNa異常の持続時間（48時間基準）で判断します。病歴聴取と再検査で必ず補完してください。</div>`;
@@ -1148,7 +1149,7 @@ function goNext() {
   h += '</div></div>';
 
   // 免責
-  h += `<div class="p2-disclaimer">本ツールの計算結果はあくまで参考値であり、「診断」を行うものではありません。輸液処方は必ず医師の指示に基づき、患者の臨床症状・バイタルサイン・尿量・体重などを定期的に再評価しながら実施してください。<br>計算根拠：体重法（組織異化補正済み）、Na法（Adrogue-Madias原理）、Hct法（TBW×[1−基準Hct/実測Hct]）、TP法（TBW×[TP/7.0−1]）。維持輸液：小児 Holliday-Segar / 高齢者22.5 / 成人27.5 mL/kg/日 ± 発熱補正（日本の運用基準を主軸としつつ、NICE CG174 を補助的に参照して本ツールで採用した参考値。ただし NICE CG174 は重症腎疾患を適用除外としている）。Posm = 2×Na + Glu/18 + BUN/2.8。<br>BNP閾値（200/500 pg/mL）は心不全の診断閾値ではなく、本ツールで慎重投与判断のために採用した安全上の参考閾値です。Na補正の急性/慢性判定はNa異常の発症時期ではなく、体重変化日数を代用指標とした参考判定です。正確には病歴聴取と再検査で補完してください。<br>参照文献:<br>1. 日本循環器学会 / 日本心不全学会. (2025). 2025年改訂版 心不全診療ガイドライン. https://www.j-circ.or.jp/cms/wp-content/uploads/2025/03/JCS2025_Kato.pdf<br>2. 日本腎臓学会. (2012). エビデンスに基づくCKD診療ガイドライン2012. 東京医学社.<br>3. Matsuo, S., Imai, E., Horio, M., et al. (2009). Revised equations for estimated GFR from serum creatinine in Japan. American Journal of Kidney Diseases, 53(6), 982-992. doi: 10.1053/j.ajkd.2008.12.034<br>4. 日本静脈経腸栄養学会. (2013). 静脈経腸栄養ガイドライン 第3版. 照林社.<br>5. Holliday, M. A., &amp; Segar, W. E. (1957). The maintenance need for water in parenteral fluid therapy. Pediatrics, 19(5), 823-832.<br>6. McDonagh, T. A., et al. (2021). 2021 ESC Guidelines for the diagnosis and treatment of acute and chronic heart failure. European Heart Journal, 42, 3599-3726. doi: 10.1093/eurheartj/ehab368<br>7. National Institute for Health and Care Excellence. (2013, updated 2016). Intravenous fluid therapy in adults in hospital (CG174). https://www.nice.org.uk/guidance/cg174<br>8. Adrogue, H. J., &amp; Madias, N. E. (2000). Hypernatremia. New England Journal of Medicine, 342, 1493-1499. doi: 10.1056/NEJM200005253422106<br>9. Adrogue, H. J., &amp; Madias, N. E. (2000). Hyponatremia. New England Journal of Medicine, 342, 1581-1589. doi: 10.1056/NEJM200005253422107<br>10. Wiedemann, H. P., et al. (2006). Comparison of two fluid-management strategies in acute lung injury. New England Journal of Medicine, 354, 2564-2575. doi: 10.1056/NEJMoa062200</div>`;
+  h += `<div class="p2-disclaimer">本ツールの計算結果はあくまで参考値であり、「診断」を行うものではありません。輸液処方は必ず医師の指示に基づき、患者の臨床症状・バイタルサイン・尿量・体重などを定期的に再評価しながら実施してください。<br>計算根拠：体重法（組織異化補正済み）、Na法（Adrogue-Madias原理）、Hct法（TBW×[1−基準Hct/実測Hct]）、TP法（TBW×[1−7.0/TP]）。TP法は血管内蛋白量が一定であることを前提とした簡易推定であり、異常蛋白産生・蛋白喪失・低栄養・肝疾患・浮腫などでは信頼性が低下します。維持輸液：小児 Holliday-Segar / 高齢者22.5 / 成人27.5 mL/kg/日 ± 発熱補正（日本の運用基準を主軸としつつ、NICE CG174 を補助的に参照して本ツールで採用した参考値。ただし NICE CG174 は重症腎疾患を適用除外としている）。推算Posm = 2×Na + Glu/18 + BUN/2.8。<br>BNP閾値（200/500 pg/mL）は心不全の診断閾値ではなく、本ツールで慎重投与判断のために採用した安全上の参考閾値です。Na補正の急性/慢性判定はNa異常の発症時期ではなく、体重変化日数を代用指標とした参考判定です。正確には病歴聴取と再検査で補完してください。<br>参照文献:<br>1. 日本循環器学会 / 日本心不全学会. (2025). 2025年改訂版 心不全診療ガイドライン. https://www.j-circ.or.jp/cms/wp-content/uploads/2025/03/JCS2025_Kato.pdf<br>2. 日本腎臓学会. (2012). エビデンスに基づくCKD診療ガイドライン2012. 東京医学社.<br>3. Matsuo, S., Imai, E., Horio, M., et al. (2009). Revised equations for estimated GFR from serum creatinine in Japan. American Journal of Kidney Diseases, 53(6), 982-992. doi: 10.1053/j.ajkd.2008.12.034<br>4. 日本静脈経腸栄養学会. (2013). 静脈経腸栄養ガイドライン 第3版. 照林社.<br>5. Holliday, M. A., &amp; Segar, W. E. (1957). The maintenance need for water in parenteral fluid therapy. Pediatrics, 19(5), 823-832.<br>6. McDonagh, T. A., et al. (2021). 2021 ESC Guidelines for the diagnosis and treatment of acute and chronic heart failure. European Heart Journal, 42, 3599-3726. doi: 10.1093/eurheartj/ehab368<br>7. National Institute for Health and Care Excellence. (2013, updated 2016). Intravenous fluid therapy in adults in hospital (CG174). https://www.nice.org.uk/guidance/cg174<br>8. Adrogue, H. J., &amp; Madias, N. E. (2000). Hypernatremia. New England Journal of Medicine, 342, 1493-1499. doi: 10.1056/NEJM200005253422106<br>9. Adrogue, H. J., &amp; Madias, N. E. (2000). Hyponatremia. New England Journal of Medicine, 342, 1581-1589. doi: 10.1056/NEJM200005253422107<br>10. Wiedemann, H. P., et al. (2006). Comparison of two fluid-management strategies in acute lung injury. New England Journal of Medicine, 354, 2564-2575. doi: 10.1056/NEJMoa062200</div>`;
   h += `<button class="p2-print-btn" onclick="window.print()">印刷 / PDF 保存</button>`;
 
   document.getElementById('p2-body').innerHTML = h;
