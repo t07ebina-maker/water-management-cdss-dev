@@ -289,9 +289,9 @@ function validate() {
   const htR = checkRange('height', 50, 250, '身長');
   if (!htR.ok) { if (htR.empty) s1Empty++; else s1Errors++; }
 
-  // Weights
-  const uwR = checkRange('usuWeight', 20, 300, '通常時体重');
-  if (!uwR.ok) { if (uwR.empty) s1Empty++; else s1Errors++; }
+  // Weights — 通常時体重は任意（推奨）、現体重は必須
+  const uwR = checkRangeOptional('usuWeight', 20, 300, '通常時体重');
+  if (!uwR.ok && !uwR.empty) s1Errors++;
   const cwR = checkRange('curWeight', 20, 300, '現体重');
   if (!cwR.ok) { if (cwR.empty) s1Empty++; else s1Errors++; }
 
@@ -303,16 +303,18 @@ function validate() {
   const cwDateEl = document.getElementById('curWeightDate');
 
   // 日時は任意 — 未入力でもエラーにしない（curWeightDate のみ初期値あり）
-  if (uwDate && uwDate > today) {
+  if (uwR.ok && !uwR.empty && uwDate && uwDate > today) {
     setField('usuWeightDate', 'error', '未来の日付は入力できません'); s1Errors++;
-  } else if (uwDate) { setField('usuWeightDate', 'ok', ''); }
+  } else if (uwR.ok && !uwR.empty && uwDate) { setField('usuWeightDate', 'ok', ''); }
+  else { setField('usuWeightDate', '', ''); }
 
-  if (cwDate && cwDate > today) {
+  if (cwR.ok && cwDate && cwDate > today) {
     setField('curWeightDate', 'error', '未来の日付は入力できません'); s1Errors++;
-  } else if (cwDate) { setField('curWeightDate', 'ok', ''); }
+  } else if (cwR.ok && cwDate) { setField('curWeightDate', 'ok', ''); }
+  else { setField('curWeightDate', '', ''); }
 
   // Date logic check
-  if (uwDate && cwDate && uwDate <= today && cwDate <= today) {
+  if (uwR.ok && !uwR.empty && cwR.ok && uwDate && cwDate && uwDate <= today && cwDate <= today) {
     if (cwDate < uwDate) {
       setField('curWeightDate', 'error', '現体重の測定日が通常時体重の測定日より前になっています');
       s1Errors++;
@@ -320,7 +322,7 @@ function validate() {
   }
 
   // Weight diff auto calc — 体重が揃えば変化量は即表示、日付が揃えば日数も表示
-  if (uwR.ok && cwR.ok) {
+  if (uwR.ok && !uwR.empty && cwR.ok) {
     const diff = uwR.val - cwR.val;
     const sign = diff > 0 ? '▼ ' : diff < 0 ? '▲ +' : '±';
     const absDiff = Math.abs(diff).toFixed(1);
@@ -347,8 +349,17 @@ function validate() {
       if (contradEl) contradEl.innerHTML = '';
     }
   } else {
-    setAutoField('weightDiff', '—', '');
-    setAutoField('weightDays', '—', '');
+    setAutoField('weightDiff', uwR.empty ? '通常時体重を入力すると算出' : '—', '');
+    setAutoField('weightDays', uwR.empty ? '通常時体重を入力すると算出' : '—', '');
+    const contradEl = document.getElementById('exam-contradiction');
+    if (contradEl) contradEl.innerHTML = '';
+  }
+
+  if (uwR.empty && cwR.ok) {
+    alerts.info.push({
+      title: '通常時体重未入力',
+      msg: '通常時体重が未入力のため、体重差・減少期間・体重法・Na法・Hct法・TP法による水分欠乏量推定は算出していません。現体重による維持輸液量・TBW・Na補正速度・尿量評価は継続します。'
+    });
   }
 
   setSection('s1-status', s1Errors, s1Empty);
@@ -866,7 +877,7 @@ function goNext() {
   const deltaW = (usualWeight && curWeight) ? usualWeight - curWeight : null;
   const tbwCoef = getTBWCoef(age, sex);
   const refHct  = getRefHct(sex);
-  const baseWt  = usualWeight || curWeight; // prefer usual weight for deficit calc
+  const baseWt  = usualWeight; // 欠乏量推定は通常時体重を必須基準とし、現体重で代用しない
 
   // --- 推算血清浸透圧 (Posm) ---
   const posm = (naVal !== null && gluVal !== null && bunVal !== null)
@@ -905,7 +916,9 @@ function goNext() {
     naDef = Math.round((1 - 140 / naVal) * baseWt * tbwCoef * 1000);
     naDefNote = '(1 − 140/' + naVal + ') × ' + baseWt + 'kg × TBW係数' + tbwCoef;
   } else {
-    naDefNote = naVal !== null && naVal <= 145 ? 'Na ≤ 145 → Na法は高張性脱水のみ適用' : 'Na 未入力';
+    naDefNote = naVal !== null && naVal > 145 && !baseWt
+      ? '通常時体重 未入力 → 算出不可'
+      : naVal !== null && naVal <= 145 ? 'Na ≤ 145 → Na法は高張性脱水のみ適用' : 'Na 未入力';
   }
 
   // Hct法
@@ -914,7 +927,7 @@ function goNext() {
     const raw = Math.round((1 - refHct / hctVal) * baseWt * tbwCoef * 1000);
     if (raw <= 0) { hctDefNote = 'Hct ' + hctVal + '% ≤ 基準' + refHct + '% → 血液希釈（不算入）'; }
     else { hctDef = raw; hctDefNote = '(1 − ' + refHct + '/' + hctVal + ') × ' + baseWt + 'kg × ' + tbwCoef; }
-  } else { hctDefNote = 'Hct 未入力'; }
+  } else { hctDefNote = !baseWt && hctVal !== null ? '通常時体重 未入力 → 算出不可' : 'Hct 未入力'; }
 
   // TP法
   let tpDef = null, tpDefNote = '';
@@ -927,7 +940,7 @@ function goNext() {
       tpDefNote = '(1 − 7.0/TP ' + tpVal + ') × ' + baseWt + 'kg × ' + tbwCoef;
       if (tpVal < 6.0) tpDefNote += '【TP<6.0: 低栄養による過大評価の可能性】';
     }
-  } else { tpDefNote = 'TP 未入力'; }
+  } else { tpDefNote = !baseWt && tpVal !== null ? '通常時体重 未入力 → 算出不可' : 'TP 未入力'; }
 
   // 平均・乖離率
   const valids = [bwDefMl, naDef, hctDef, tpDef].filter(x => x !== null && x > 0);
@@ -952,6 +965,13 @@ function goNext() {
   else if (hfCaution || kRestrict || ckdCaution) { volFactor = 0.75; volLabel = '心不全リスクまたは腎機能障害では、通常の75%に制限'; }
 
   const fluidPlan = buildFluidPlan2(dtype, naVal, egfrVal, hfRisk, kVal, volFactor);
+  if (avgDefMl === null && !hfRisk) {
+    fluidPlan.steps = [
+      '欠乏量が算出不可のため、欠乏補正量・Day 1〜3の欠乏補正プロトコルは提示しません。',
+      '維持輸液は現体重で別途算出し、Na補正速度を0.5 mEq/L/h以下に保ちます。',
+      '4時間後にバイタル・尿量、8時間後にNaを再評価します。'
+    ];
+  }
 
   const adjMnt = Math.round(mnt.adjusted * volFactor);
   const proto = avgDefMl !== null && mnt.adjusted !== null ? [
@@ -1161,7 +1181,7 @@ function goNext() {
 // ============================================================
 //  SAMPLE CASES — 50症例ライブラリ
 // ============================================================
-const SAMPLE_CASES = [
+const SAMPLE_CASES_BASE = [
   // ──── 高張性脱水（Na > 145） 10症例 ────
   { label:'①高張性脱水・典型（80歳男性）', cat:'高張性脱水（Na>145）',
     age:80, sex:'male', height:163, usuW:63.0, daysAgo:14, curW:59.5,
@@ -1467,6 +1487,105 @@ const SAMPLE_CASES = [
     sbp:90, dbp:55, hr:105, rr:20, spo2:94, temp:37.5, urineH:12,
     jcs:'II-10', dryMouth:true, turgurDown:true, axilDry:true, edema:false, rales:false, jvd:false,
     na:148, k:4.8, cl:110, bun:45, cre:1.8, glu:112, tp:5.0, alb:2.2, hb:11.0, hct:35.0, bnp:null, stress:'1.0' },
+];
+
+// ──── 境界値50症例（100症例ライブラリの後半） ────
+const SAMPLE_CASES_BOUNDARY = [
+  { label:'BV-01 Na=119（CRITICAL）', cat:'Na境界',age:65,sex:'male',usuW:60,daysAgo:5,curW:59,sbp:110,dbp:70,hr:80,rr:18,spo2:97,temp:37.0,urineH:40,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:119,k:4.0,cl:88,bun:15,cre:0.9,glu:90,tp:6.5,alb:3.5,hb:13.0,hct:40,bnp:null,stress:'1.0' },
+  { label:'BV-02 Na=120（境界・WARNING）', cat:'Na境界',age:65,sex:'male',usuW:60,daysAgo:5,curW:59,sbp:110,dbp:70,hr:80,rr:18,spo2:97,temp:37.0,urineH:40,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:120,k:4.0,cl:88,bun:15,cre:0.9,glu:90,tp:6.5,alb:3.5,hb:13.0,hct:40,bnp:null,stress:'1.0' },
+  { label:'BV-03 Na=134（低張性境界）', cat:'Na境界',age:65,sex:'male',usuW:60,daysAgo:5,curW:59,sbp:110,dbp:70,hr:80,rr:18,spo2:97,temp:37.0,urineH:40,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:134,k:4.0,cl:88,bun:15,cre:0.9,glu:90,tp:6.5,alb:3.5,hb:13.0,hct:40,bnp:null,stress:'1.0' },
+  { label:'BV-04 Na=135（等張性境界）', cat:'Na境界',age:65,sex:'male',usuW:60,daysAgo:5,curW:59,sbp:110,dbp:70,hr:80,rr:18,spo2:97,temp:37.0,urineH:40,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:135,k:4.0,cl:88,bun:15,cre:0.9,glu:90,tp:6.5,alb:3.5,hb:13.0,hct:40,bnp:null,stress:'1.0' },
+  { label:'BV-05 Na=145（高張性境界）', cat:'Na境界',age:65,sex:'male',usuW:60,daysAgo:5,curW:59,sbp:110,dbp:70,hr:80,rr:18,spo2:97,temp:37.0,urineH:40,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:145,k:4.0,cl:88,bun:15,cre:0.9,glu:90,tp:6.5,alb:3.5,hb:13.0,hct:40,bnp:null,stress:'1.0' },
+  { label:'BV-06 Na=146（高張性・Na法適用）', cat:'Na境界',age:65,sex:'male',usuW:60,daysAgo:3,curW:59,sbp:110,dbp:70,hr:80,rr:18,spo2:97,temp:37.0,urineH:40,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:146,k:4.0,cl:88,bun:15,cre:0.9,glu:90,tp:6.5,alb:3.5,hb:13.0,hct:40,bnp:null,stress:'1.0' },
+  { label:'BV-07 Na=160（高Na境界）', cat:'Na境界',age:65,sex:'male',usuW:60,daysAgo:5,curW:59,sbp:110,dbp:70,hr:80,rr:18,spo2:97,temp:37.0,urineH:40,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:160,k:4.0,cl:88,bun:15,cre:0.9,glu:90,tp:6.5,alb:3.5,hb:13.0,hct:40,bnp:null,stress:'1.0' },
+  { label:'BV-08 Na=161（CRITICAL高Na）', cat:'Na境界',age:65,sex:'male',usuW:60,daysAgo:5,curW:59,sbp:110,dbp:70,hr:80,rr:18,spo2:97,temp:37.0,urineH:40,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:161,k:4.0,cl:88,bun:15,cre:0.9,glu:90,tp:6.5,alb:3.5,hb:13.0,hct:40,bnp:null,stress:'1.0' },
+
+  // BNP境界値
+  { label:'BV-09 BNP=199（閾値未満）', cat:'BNP境界',age:70,sex:'male',usuW:65,daysAgo:7,curW:63,sbp:112,dbp:70,hr:88,rr:18,spo2:96,temp:37.0,urineH:30,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:138,k:4.2,cl:100,bun:20,cre:1.0,glu:110,tp:6.0,alb:3.2,hb:12.0,hct:38,bnp:199,stress:'1.0' },
+  { label:'BV-10 BNP=200（境界・INFO）', cat:'BNP境界',age:70,sex:'male',usuW:65,daysAgo:7,curW:63,sbp:112,dbp:70,hr:88,rr:18,spo2:96,temp:37.0,urineH:30,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:138,k:4.2,cl:100,bun:20,cre:1.0,glu:110,tp:6.0,alb:3.2,hb:12.0,hct:38,bnp:200,stress:'1.0' },
+  { label:'BV-11 BNP=201（WARNING 75%）', cat:'BNP境界',age:70,sex:'male',usuW:65,daysAgo:7,curW:63,sbp:112,dbp:70,hr:88,rr:18,spo2:96,temp:37.0,urineH:30,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:138,k:4.2,cl:100,bun:20,cre:1.0,glu:110,tp:6.0,alb:3.2,hb:12.0,hct:38,bnp:201,stress:'1.0' },
+  { label:'BV-12 BNP=500（75%のまま）', cat:'BNP境界',age:70,sex:'male',usuW:65,daysAgo:7,curW:63,sbp:112,dbp:70,hr:88,rr:18,spo2:96,temp:37.0,urineH:30,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:138,k:4.2,cl:100,bun:20,cre:1.0,glu:110,tp:6.0,alb:3.2,hb:12.0,hct:38,bnp:500,stress:'1.0' },
+  { label:'BV-13 BNP=501（WARNING 50%）', cat:'BNP境界',age:70,sex:'male',usuW:65,daysAgo:7,curW:63,sbp:112,dbp:70,hr:88,rr:18,spo2:96,temp:37.0,urineH:30,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:138,k:4.2,cl:100,bun:20,cre:1.0,glu:110,tp:6.0,alb:3.2,hb:12.0,hct:38,bnp:501,stress:'1.0' },
+
+  // eGFR境界値
+  { label:'BV-14 eGFR境界G5/G4（Cre=3.5 男75歳）', cat:'eGFR境界',age:75,sex:'male',usuW:60,daysAgo:7,curW:58,sbp:112,dbp:70,hr:85,rr:18,spo2:96,temp:37.0,urineH:25,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:140,k:4.8,cl:104,bun:55,cre:3.5,glu:120,tp:6.0,alb:3.0,hb:11.0,hct:34,bnp:null,stress:'1.0' },
+  { label:'BV-15 eGFR境界G4/G3b（Cre=2.0 男75歳）', cat:'eGFR境界',age:75,sex:'male',usuW:60,daysAgo:7,curW:58,sbp:112,dbp:70,hr:85,rr:18,spo2:96,temp:37.0,urineH:25,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:140,k:4.8,cl:104,bun:40,cre:2.0,glu:120,tp:6.0,alb:3.0,hb:11.0,hct:34,bnp:null,stress:'1.0' },
+  { label:'BV-16 eGFR境界G3b/G3a（Cre=1.5 男75歳）', cat:'eGFR境界',age:75,sex:'male',usuW:60,daysAgo:7,curW:58,sbp:112,dbp:70,hr:85,rr:18,spo2:96,temp:37.0,urineH:25,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:140,k:4.8,cl:104,bun:35,cre:1.5,glu:120,tp:6.0,alb:3.0,hb:11.0,hct:34,bnp:null,stress:'1.0' },
+  { label:'BV-17 eGFR境界G3a/G2（Cre=1.0 男75歳）', cat:'eGFR境界',age:75,sex:'male',usuW:60,daysAgo:7,curW:58,sbp:112,dbp:70,hr:85,rr:18,spo2:96,temp:37.0,urineH:25,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:140,k:4.8,cl:104,bun:25,cre:1.0,glu:120,tp:6.0,alb:3.0,hb:11.0,hct:34,bnp:null,stress:'1.0' },
+
+  // 尿量境界値
+  { label:'BV-18 尿量0.5 mL/kg/h（重度乏尿境界・60kg）', cat:'尿量境界',age:70,sex:'male',usuW:62,daysAgo:5,curW:60,sbp:108,dbp:68,hr:88,rr:18,spo2:96,temp:37.0,urineH:30,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:138,k:4.0,cl:100,bun:20,cre:1.0,glu:110,tp:6.0,alb:3.2,hb:13.0,hct:40,bnp:null,stress:'1.0' },
+  { label:'BV-19 尿量1.0 mL/kg/h（乏尿境界・60kg）', cat:'尿量境界',age:70,sex:'male',usuW:62,daysAgo:5,curW:60,sbp:108,dbp:68,hr:88,rr:18,spo2:96,temp:37.0,urineH:60,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:138,k:4.0,cl:100,bun:20,cre:1.0,glu:110,tp:6.0,alb:3.2,hb:13.0,hct:40,bnp:null,stress:'1.0' },
+  { label:'BV-20 尿量4.1mL/h（無尿境界100mL/日未満）', cat:'尿量境界',age:70,sex:'male',usuW:62,daysAgo:5,curW:60,sbp:108,dbp:68,hr:88,rr:18,spo2:96,temp:37.0,urineH:4.1,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:138,k:4.0,cl:100,bun:20,cre:1.0,glu:110,tp:6.0,alb:3.2,hb:13.0,hct:40,bnp:null,stress:'1.0' },
+  { label:'BV-21 尿量4.2mL/h（100.8mL/日・無尿超え）', cat:'尿量境界',age:70,sex:'male',usuW:62,daysAgo:5,curW:60,sbp:108,dbp:68,hr:88,rr:18,spo2:96,temp:37.0,urineH:4.2,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:138,k:4.0,cl:100,bun:20,cre:1.0,glu:110,tp:6.0,alb:3.2,hb:13.0,hct:40,bnp:null,stress:'1.0' },
+
+  // 発熱補正境界値
+  { label:'BV-22 体温37.0℃（補正なし）', cat:'発熱境界',age:65,sex:'male',usuW:60,daysAgo:3,curW:59,sbp:110,dbp:70,hr:80,rr:18,spo2:97,temp:37.0,urineH:40,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:138,k:4.0,cl:100,bun:18,cre:0.9,glu:100,tp:6.0,alb:3.2,hb:13.0,hct:40,bnp:null,stress:'1.0' },
+  { label:'BV-23 体温37.8℃（補正+12%）', cat:'発熱境界',age:65,sex:'male',usuW:60,daysAgo:3,curW:59,sbp:110,dbp:70,hr:80,rr:18,spo2:97,temp:37.8,urineH:40,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:138,k:4.0,cl:100,bun:18,cre:0.9,glu:100,tp:6.0,alb:3.2,hb:13.0,hct:40,bnp:null,stress:'1.0' },
+  { label:'BV-24 体温38.5℃（補正+22.5%）', cat:'発熱境界',age:65,sex:'male',usuW:60,daysAgo:3,curW:59,sbp:110,dbp:70,hr:80,rr:18,spo2:97,temp:38.5,urineH:40,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:138,k:4.0,cl:100,bun:18,cre:0.9,glu:100,tp:6.0,alb:3.2,hb:13.0,hct:40,bnp:null,stress:'1.0' },
+  { label:'BV-25 体温41.0℃（補正+60%）', cat:'発熱境界',age:65,sex:'male',usuW:60,daysAgo:3,curW:59,sbp:110,dbp:70,hr:80,rr:18,spo2:97,temp:41.0,urineH:40,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:138,k:4.0,cl:100,bun:18,cre:0.9,glu:100,tp:6.0,alb:3.2,hb:13.0,hct:40,bnp:null,stress:'1.0' },
+
+  // ストレス係数全種類
+  { label:'BV-26 ストレス1.0（組織0.3kg/日）', cat:'ストレス係数',age:60,sex:'male',usuW:60,daysAgo:5,curW:57,sbp:110,dbp:70,hr:80,rr:18,spo2:97,temp:37.0,urineH:35,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:140,k:4.0,cl:100,bun:18,cre:0.9,glu:100,tp:6.0,alb:3.2,hb:13.0,hct:40,bnp:null,stress:'1.0' },
+  { label:'BV-27 ストレス1.1（組織0.3kg/日）', cat:'ストレス係数',age:60,sex:'male',usuW:60,daysAgo:5,curW:57,sbp:110,dbp:70,hr:80,rr:18,spo2:97,temp:37.0,urineH:35,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:140,k:4.0,cl:100,bun:18,cre:0.9,glu:100,tp:6.0,alb:3.2,hb:13.0,hct:40,bnp:null,stress:'1.1' },
+  { label:'BV-28 ストレス1.2（組織0.3kg/日）', cat:'ストレス係数',age:60,sex:'male',usuW:60,daysAgo:5,curW:57,sbp:110,dbp:70,hr:80,rr:18,spo2:97,temp:37.0,urineH:35,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:140,k:4.0,cl:100,bun:18,cre:0.9,glu:100,tp:6.0,alb:3.2,hb:13.0,hct:40,bnp:null,stress:'1.2' },
+  { label:'BV-29 ストレス1.3（組織0.4kg/日）', cat:'ストレス係数',age:60,sex:'male',usuW:60,daysAgo:5,curW:57,sbp:110,dbp:70,hr:80,rr:18,spo2:97,temp:37.0,urineH:35,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:140,k:4.0,cl:100,bun:18,cre:0.9,glu:100,tp:6.0,alb:3.2,hb:13.0,hct:40,bnp:null,stress:'1.3' },
+  { label:'BV-30 ストレス1.5（組織0.4kg/日）', cat:'ストレス係数',age:60,sex:'male',usuW:60,daysAgo:5,curW:57,sbp:110,dbp:70,hr:80,rr:18,spo2:97,temp:37.0,urineH:35,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:140,k:4.0,cl:100,bun:18,cre:0.9,glu:100,tp:6.0,alb:3.2,hb:13.0,hct:40,bnp:null,stress:'1.5' },
+  { label:'BV-31 ストレス1.7（組織0.5kg/日）', cat:'ストレス係数',age:60,sex:'male',usuW:60,daysAgo:5,curW:57,sbp:110,dbp:70,hr:80,rr:18,spo2:97,temp:37.0,urineH:35,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:140,k:4.0,cl:100,bun:18,cre:0.9,glu:100,tp:6.0,alb:3.2,hb:13.0,hct:40,bnp:null,stress:'1.7' },
+  { label:'BV-32 ストレス2.0（組織0.5kg/日）', cat:'ストレス係数',age:60,sex:'male',usuW:60,daysAgo:5,curW:57,sbp:110,dbp:70,hr:80,rr:18,spo2:97,temp:37.0,urineH:35,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:140,k:4.0,cl:100,bun:18,cre:0.9,glu:100,tp:6.0,alb:3.2,hb:13.0,hct:40,bnp:null,stress:'2.0' },
+
+  // TBW係数区分境界（年齢境界）
+  { label:'BV-33 14歳・小児TBW0.65', cat:'TBW境界',age:14,sex:'male',usuW:45,daysAgo:3,curW:44,sbp:110,dbp:68,hr:80,rr:18,spo2:97,temp:37.0,urineH:30,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:148,k:4.0,cl:100,bun:15,cre:0.7,glu:90,tp:7.0,alb:4.0,hb:14.0,hct:42,bnp:null,stress:'1.1' },
+  { label:'BV-34 15歳・成人TBW0.6（男）', cat:'TBW境界',age:15,sex:'male',usuW:50,daysAgo:3,curW:49,sbp:110,dbp:68,hr:80,rr:18,spo2:97,temp:37.0,urineH:35,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:148,k:4.0,cl:100,bun:15,cre:0.8,glu:90,tp:7.0,alb:4.0,hb:14.0,hct:42,bnp:null,stress:'1.1' },
+  { label:'BV-35 64歳・成人TBW0.6（男）', cat:'TBW境界',age:64,sex:'male',usuW:65,daysAgo:3,curW:64,sbp:112,dbp:70,hr:82,rr:18,spo2:97,temp:37.0,urineH:38,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:148,k:4.0,cl:100,bun:20,cre:0.9,glu:100,tp:6.5,alb:3.5,hb:14.0,hct:43,bnp:null,stress:'1.0' },
+  { label:'BV-36 65歳・高齢TBW0.5（男）', cat:'TBW境界',age:65,sex:'male',usuW:65,daysAgo:3,curW:64,sbp:112,dbp:70,hr:82,rr:18,spo2:97,temp:37.0,urineH:38,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:148,k:4.0,cl:100,bun:20,cre:0.9,glu:100,tp:6.5,alb:3.5,hb:14.0,hct:43,bnp:null,stress:'1.0' },
+  { label:'BV-37 65歳・高齢TBW0.45（女）', cat:'TBW境界',age:65,sex:'female',usuW:55,daysAgo:3,curW:54,sbp:110,dbp:68,hr:80,rr:18,spo2:97,temp:37.0,urineH:35,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:148,k:4.0,cl:100,bun:18,cre:0.8,glu:90,tp:6.5,alb:3.5,hb:12.5,hct:39,bnp:null,stress:'1.0' },
+
+  // 体重変化期間境界値
+  { label:'BV-38 減少期間3日（急性）', cat:'体重変化期間',age:65,sex:'male',usuW:65,daysAgo:3,curW:62,sbp:110,dbp:70,hr:88,rr:18,spo2:97,temp:37.5,urineH:35,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:148,k:4.2,cl:104,bun:28,cre:1.0,glu:110,tp:6.0,alb:3.2,hb:13.5,hct:42,bnp:null,stress:'1.3' },
+  { label:'BV-39 減少期間4日（亜急性）', cat:'体重変化期間',age:65,sex:'male',usuW:65,daysAgo:4,curW:62,sbp:110,dbp:70,hr:88,rr:18,spo2:97,temp:37.5,urineH:35,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:148,k:4.2,cl:104,bun:28,cre:1.0,glu:110,tp:6.0,alb:3.2,hb:13.5,hct:42,bnp:null,stress:'1.3' },
+  { label:'BV-40 減少期間7日（亜急性上限）', cat:'体重変化期間',age:65,sex:'male',usuW:65,daysAgo:7,curW:62,sbp:110,dbp:70,hr:88,rr:18,spo2:97,temp:37.5,urineH:35,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:148,k:4.2,cl:104,bun:28,cre:1.0,glu:110,tp:6.0,alb:3.2,hb:13.5,hct:42,bnp:null,stress:'1.3' },
+  { label:'BV-41 減少期間8日（慢性）', cat:'体重変化期間',age:65,sex:'male',usuW:65,daysAgo:8,curW:62,sbp:110,dbp:70,hr:88,rr:18,spo2:97,temp:37.5,urineH:35,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:148,k:4.2,cl:104,bun:28,cre:1.0,glu:110,tp:6.0,alb:3.2,hb:13.5,hct:42,bnp:null,stress:'1.3' },
+
+  // 小児Holliday-Segar
+  { label:'BV-42 小児5kg（Holliday-Segar検証）', cat:'小児',age:1,sex:'male',usuW:5.5,daysAgo:2,curW:5,sbp:80,dbp:50,hr:120,rr:30,spo2:97,temp:38.0,urineH:2.5,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:145,k:4.0,cl:108,bun:12,cre:0.3,glu:90,tp:6.0,alb:3.5,hb:12.0,hct:36,bnp:null,stress:'1.1' },
+  { label:'BV-43 小児10kg（境界・第1段階のみ）', cat:'小児',age:3,sex:'male',usuW:14,daysAgo:2,curW:13.5,sbp:85,dbp:55,hr:110,rr:28,spo2:97,temp:38.2,urineH:7,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:146,k:4.0,cl:106,bun:14,cre:0.4,glu:85,tp:6.2,alb:3.8,hb:12.5,hct:38,bnp:null,stress:'1.1' },
+  { label:'BV-44 小児25kg（Holliday-Segar 3段階）', cat:'小児',age:8,sex:'female',usuW:27,daysAgo:2,curW:25,sbp:90,dbp:58,hr:100,rr:24,spo2:97,temp:38.5,urineH:12,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:148,k:4.0,cl:108,bun:12,cre:0.5,glu:90,tp:6.5,alb:4.0,hb:13.0,hct:39,bnp:null,stress:'1.2' },
+
+  // 高齢者維持輸液境界
+  { label:'BV-45 高齢者体重20kg（低体重）', cat:'高齢維持量',age:88,sex:'female',usuW:22,daysAgo:14,curW:20,sbp:100,dbp:62,hr:85,rr:18,spo2:96,temp:37.0,urineH:18,jcs:'I-1',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:150,k:4.0,cl:110,bun:28,cre:1.2,glu:110,tp:5.5,alb:2.5,hb:10.5,hct:33,bnp:null,stress:'1.0' },
+
+  // eGFR=0（Cre極値）
+  { label:'BV-46 Cre=15.0（極高値・G5確定）', cat:'eGFR境界',age:65,sex:'male',usuW:60,daysAgo:7,curW:58,sbp:108,dbp:68,hr:88,rr:18,spo2:96,temp:37.0,urineH:10,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:140,k:5.5,cl:104,bun:80,cre:15.0,glu:120,tp:5.8,alb:2.8,hb:9.0,hct:28,bnp:null,stress:'1.0' },
+
+  // 極端値での計算破綻テスト
+  { label:'BV-47 Hct=1（極小値NaN防止）', cat:'極端値',age:65,sex:'male',usuW:60,daysAgo:3,curW:59,sbp:110,dbp:70,hr:80,rr:18,spo2:97,temp:37.0,urineH:40,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:148,k:4.0,cl:100,bun:18,cre:0.9,glu:100,tp:6.0,alb:3.2,hb:3.0,hct:10,bnp:null,stress:'1.0' },
+  { label:'BV-48 Hct=70（極大値）', cat:'極端値',age:65,sex:'male',usuW:60,daysAgo:3,curW:59,sbp:110,dbp:70,hr:80,rr:18,spo2:97,temp:37.0,urineH:40,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:148,k:4.0,cl:100,bun:18,cre:0.9,glu:100,tp:6.0,alb:3.2,hb:22.0,hct:70,bnp:null,stress:'1.0' },
+  { label:'BV-49 TP=0（計算破綻防止）', cat:'極端値',age:65,sex:'male',usuW:60,daysAgo:3,curW:59,sbp:110,dbp:70,hr:80,rr:18,spo2:97,temp:37.0,urineH:40,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:148,k:4.0,cl:100,bun:18,cre:0.9,glu:100,tp:3.0,alb:1.5,hb:12.0,hct:38,bnp:null,stress:'1.0' },
+  { label:'BV-50 体重増加（ΔW<0）', cat:'極端値',age:65,sex:'male',usuW:60,daysAgo:7,curW:63,sbp:110,dbp:70,hr:80,rr:18,spo2:97,temp:37.0,urineH:40,jcs:'0',edema:true,rales:false,jvd:false,cpAngle:'sharp',na:132,k:4.0,cl:100,bun:15,cre:0.9,glu:90,tp:6.0,alb:3.0,hb:12.0,hct:38,bnp:null,stress:'1.0' },
+].map(c => ({ ...c, height: c.height ?? 165 }));
+
+// ──── 通常時体重なし50症例（現体重のみでの安全ゲート回帰確認） ────
+const SAMPLE_CASES_NO_USUAL = SAMPLE_CASES_BASE.map((c, i) => ({
+  ...c,
+  label: 'NW-' + String(i + 1).padStart(2, '0') + ' ' + c.label + '（通常時体重なし）',
+  cat: '通常時体重なし（検証）',
+  usuW: null,
+  daysAgo: null
+}));
+
+// アプリ内ライブラリ：基本50＋境界50＋通常時体重なし50＋追加ケース1
+const SAMPLE_CASES = [
+  ...SAMPLE_CASES_BASE,
+  ...SAMPLE_CASES_BOUNDARY,
+  ...SAMPLE_CASES_NO_USUAL,
+  {
+    ...SAMPLE_CASES_BASE[0],
+    label: '151 通常時体重なし・高Na追加ケース',
+    cat: '通常時体重なし（検証）',
+    usuW: null,
+    daysAgo: null
+  }
 ];
 
 // ============================================================

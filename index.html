@@ -37,7 +37,7 @@
   <!-- ===== SAMPLE CASE PANEL ===== -->
   <div class="sample-panel" id="samplePanel">
     <div class="sample-panel-hdr">
-      <span>サンプル症例（50例）&#x2014; 検証・類似症例参照用</span>
+      <span>サンプル症例（151例：基本50＋境界50＋通常時体重なし50＋追加1）&#x2014; 検証・類似症例参照用</span>
       <button class="btn-sample-toggle" id="btnSampleToggle" onclick="toggleSamplePanel()">一覧を開く &#x25BC;</button>
     </div>
     <div class="sample-cards-body" id="sampleCardsBody">
@@ -80,7 +80,7 @@
       <div class="sec-label">体重情報</div>
       <div class="grid2">
         <div class="form-group">
-          <label class="fl" for="usuWeight">通常時体重 <span class="req">*</span> <span class="unit">kg</span> <span class="range-hint">(20〜300)</span></label>
+          <label class="fl" for="usuWeight">通常時体重 <span class="unit">kg</span> <span class="range-hint">（任意・推奨／20〜300）</span></label>
           <input type="number" id="usuWeight" min="20" max="300" step="0.1" placeholder="例: 60.0" oninput="validate()">
           <div class="fmsg" id="usuWeight-msg"></div>
         </div>
