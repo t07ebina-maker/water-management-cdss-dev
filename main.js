@@ -679,23 +679,28 @@ function validate() {
   if (totalCrit > 0) {
     badge.className = 'status-badge critical'; badge.textContent = '危険 – 即時対応が必要';
     btnNext.disabled = true;
+    footerStat.className = 'footer-stat alert-critical';
     footerStat.textContent = `Critical アラート ${totalCrit} 件が発動中。医師に報告し、安全確認が必要です。`;
   } else if (totalErrors > 0) {
     badge.className = 'status-badge critical'; badge.textContent = '入力エラーあり';
     btnNext.disabled = true;
+    footerStat.className = 'footer-stat alert-critical';
     footerStat.textContent = '入力エラーを修正してください。';
   } else if (totalEmpty > 0) {
     // 未入力のみ（範囲外なし）→ エラーではなく入力待ち。第2段階へは進めない
     badge.className = 'status-badge waiting'; badge.textContent = '入力待ち';
     btnNext.disabled = true;
+    footerStat.className = 'footer-stat alert-warning';
     footerStat.textContent = '必須項目を入力してください';
   } else if (totalWarn > 0) {
     badge.className = 'status-badge warning'; badge.textContent = '要注意 – 警告あり';
     btnNext.disabled = false;
+    footerStat.className = 'footer-stat alert-warning';
     footerStat.textContent = `Warning ${totalWarn} 件。慎重投与モードで第2段階へ進めます。`;
   } else {
     badge.className = 'status-badge ok'; badge.textContent = '入力OK';
     btnNext.disabled = false;
+    footerStat.className = 'footer-stat alert-ok';
     footerStat.textContent = '入力が完了しました。第2段階（計算・判定）へ進む準備ができました。';
   }
 
