@@ -75,9 +75,11 @@ input[type="number"], input[type="date"], input[type="text"], select {
   font-size: 15px; font-family: inherit; color: var(--text); background: #F8FBFF;
   transition: border-color .18s, box-shadow .18s; -webkit-appearance: none; appearance: none;
 }
+select { font-size: 13px; background: #E3F2FD; border-color: #64B5F6; }
 select option { font-size: 13px; color: #263238; background: #DCEEFF; }
-#jcs, #gcsE, #gcsV, #gcsM, #cpAngle { background: #E3F2FD; border-color: #64B5F6; }
-#jcs:focus, #gcsE:focus, #gcsV:focus, #gcsM:focus, #cpAngle:focus { background: #D2ECFF; border-color: #1565C0; }
+#sex, #jcs, #gcsE, #gcsV, #gcsM, #cpAngle { background: #E3F2FD; border-color: #64B5F6; }
+#sex:focus, #jcs:focus, #gcsE:focus, #gcsV:focus, #gcsM:focus, #cpAngle:focus { background: #D2ECFF; border-color: #1565C0; }
+#cpAngle { font-size: 13px !important; border-color: #64B5F6 !important; }
 input:focus, select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(21,101,192,.12); }
 input.f-error  { border-color: var(--danger);  background: #FFF5F5; }
 input.f-warn   { border-color: #F9A825; background: var(--warning-light); }
