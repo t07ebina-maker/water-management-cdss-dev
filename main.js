@@ -273,6 +273,7 @@ function checkRangeOptional(id, min, max, label) {
 // ============================================================
 function validate() {
   alerts = { critical: [], warning: [], info: [] };
+  if (document.querySelector('.custom-select')) syncCustomSelects();
 
   // --- Section 1 ---
   // 未入力（empty）と入力エラー（範囲外・論理矛盾）を区別して数える
@@ -1727,6 +1728,124 @@ function closeSamplePanel() {
 }
 
 // ============================================================
+//  CUSTOM SELECTS
+//  iPhoneのネイティブselectポップアップはOS側描画のため、
+//  視認性を統一するHTMLリストを表示し、内部selectと値を同期する。
+// ============================================================
+const CUSTOM_SELECT_IDS = ['sex', 'jcs', 'gcsE', 'gcsV', 'gcsM', 'cpAngle'];
+
+function syncCustomSelects() {
+  document.querySelectorAll('.custom-select').forEach(wrap => {
+    const select = wrap.querySelector('select');
+    const trigger = wrap.querySelector('.custom-select-trigger');
+    if (!select || !trigger) return;
+    const selected = select.options[select.selectedIndex];
+    trigger.textContent = selected ? selected.textContent : '選択してください';
+    wrap.querySelectorAll('.custom-select-option').forEach(option => {
+      const isSelected = option.dataset.value === select.value;
+      option.classList.toggle('selected', isSelected);
+      option.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+    });
+  });
+}
+
+function initCustomSelects() {
+  const closeAll = except => {
+    document.querySelectorAll('.custom-select.open').forEach(wrap => {
+      if (wrap !== except) {
+        wrap.classList.remove('open');
+        const trigger = wrap.querySelector('.custom-select-trigger');
+        if (trigger) trigger.setAttribute('aria-expanded', 'false');
+      }
+    });
+  };
+
+  CUSTOM_SELECT_IDS.forEach(id => {
+    const select = document.getElementById(id);
+    if (!select || select.dataset.customSelectReady === '1') return;
+    const label = select.closest('.form-group')?.querySelector('label');
+    const wrap = document.createElement('div');
+    wrap.className = 'custom-select';
+    wrap.dataset.selectId = id;
+
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.className = 'custom-select-trigger';
+    trigger.id = id + '-custom';
+    trigger.setAttribute('aria-haspopup', 'listbox');
+    trigger.setAttribute('aria-expanded', 'false');
+    trigger.setAttribute('aria-label', (label?.textContent || id).trim() + ' 選択');
+
+    const menu = document.createElement('div');
+    menu.className = 'custom-select-menu';
+    menu.setAttribute('role', 'listbox');
+    menu.id = id + '-menu';
+    trigger.setAttribute('aria-controls', menu.id);
+
+    const addOption = option => {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'custom-select-option';
+      item.dataset.value = option.value;
+      item.setAttribute('role', 'option');
+      item.textContent = option.textContent;
+      item.addEventListener('click', () => {
+        select.value = option.value;
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+        syncCustomSelects();
+        wrap.classList.remove('open');
+        trigger.setAttribute('aria-expanded', 'false');
+        trigger.focus();
+      });
+      menu.appendChild(item);
+    };
+
+    Array.from(select.children).forEach(child => {
+      if (child.tagName === 'OPTGROUP') {
+        const groupLabel = document.createElement('div');
+        groupLabel.className = 'custom-select-group-label';
+        groupLabel.textContent = child.label;
+        menu.appendChild(groupLabel);
+        Array.from(child.querySelectorAll('option')).forEach(addOption);
+      } else if (child.tagName === 'OPTION') {
+        addOption(child);
+      }
+    });
+
+    trigger.addEventListener('click', () => {
+      const willOpen = !wrap.classList.contains('open');
+      closeAll(willOpen ? wrap : null);
+      wrap.classList.toggle('open', willOpen);
+      trigger.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+    });
+    trigger.addEventListener('keydown', event => {
+      if (event.key === 'Escape') {
+        wrap.classList.remove('open');
+        trigger.setAttribute('aria-expanded', 'false');
+      } else if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        trigger.click();
+      }
+    });
+    select.addEventListener('change', syncCustomSelects);
+    select.dataset.customSelectReady = '1';
+    select.classList.add('custom-select-native');
+    select.parentNode.insertBefore(wrap, select);
+    wrap.appendChild(trigger);
+    wrap.appendChild(menu);
+    wrap.appendChild(select);
+  });
+
+  if (!document.body.dataset.customSelectOutsideHandler) {
+    document.addEventListener('click', event => {
+      if (!event.target.closest('.custom-select')) closeAll(null);
+    });
+    document.body.dataset.customSelectOutsideHandler = '1';
+  }
+  syncCustomSelects();
+}
+
+// ============================================================
 //  INIT
 // ============================================================
 window.addEventListener('DOMContentLoaded', () => {
@@ -1741,6 +1860,8 @@ window.addEventListener('DOMContentLoaded', () => {
   // usuWeightDate は空欄のまま（利用者が測定日時を入力する）
   // サンプルカードを構築
   buildSampleCards();
+  // iPhoneでも背景色・文字サイズを制御できるカスタムプルダウンを構築
+  initCustomSelects();
   // 入力欄のフォーカス移動
   setupFocusFlow();
   // フッター初期状態: 折りたたみ
