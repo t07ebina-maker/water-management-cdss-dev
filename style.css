@@ -80,6 +80,18 @@ select option { font-size: 13px; color: #263238; background: #DCEEFF; }
 #sex, #jcs, #gcsE, #gcsV, #gcsM, #cpAngle { background: #E3F2FD; border-color: #64B5F6; }
 #sex:focus, #jcs:focus, #gcsE:focus, #gcsV:focus, #gcsM:focus, #cpAngle:focus { background: #D2ECFF; border-color: #1565C0; }
 #cpAngle { font-size: 13px !important; border-color: #64B5F6 !important; }
+.custom-select { position: relative; width: 100%; }
+.custom-select-native { position: absolute !important; width: 1px !important; height: 1px !important; opacity: 0 !important; pointer-events: none !important; }
+.custom-select-trigger { width: 100%; min-height: 40px; padding: 9px 36px 9px 12px; position: relative; text-align: left; border: 1.5px solid #64B5F6; border-radius: 6px; font-size: 13px; font-family: inherit; color: var(--text); background: #E3F2FD; cursor: pointer; }
+.custom-select-trigger::after { content: '▾'; position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: #1565C0; font-size: 14px; }
+.custom-select-trigger:focus { outline: none; border-color: #1565C0; background: #D2ECFF; box-shadow: 0 0 0 3px rgba(21,101,192,.18); }
+.custom-select.open .custom-select-trigger { border-color: #1565C0; background: #D2ECFF; border-radius: 6px 6px 0 0; }
+.custom-select-menu { display: none; position: absolute; z-index: 1000; top: calc(100% - 1px); left: 0; right: 0; max-height: 280px; overflow-y: auto; padding: 5px; border: 1.5px solid #1565C0; border-top: 0; border-radius: 0 0 6px 6px; background: #E3F2FD; box-shadow: 0 6px 16px rgba(13,71,161,.22); }
+.custom-select.open .custom-select-menu { display: block; }
+.custom-select-option { display: block; width: 100%; padding: 7px 9px; border: 0; border-radius: 4px; text-align: left; font-size: 13px; line-height: 1.35; font-family: inherit; color: #263238; background: #E3F2FD; cursor: pointer; white-space: normal; }
+.custom-select-option:hover, .custom-select-option:focus, .custom-select-option.selected { background: #90CAF9; color: #0D47A1; outline: none; }
+.custom-select-group-label { padding: 6px 8px 3px; color: #0D47A1; font-size: 11px; font-weight: 700; border-top: 1px solid #BBDEFB; }
+.custom-select-group-label:first-child { border-top: 0; }
 input:focus, select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(21,101,192,.12); }
 input.f-error  { border-color: var(--danger);  background: #FFF5F5; }
 input.f-warn   { border-color: #F9A825; background: var(--warning-light); }
