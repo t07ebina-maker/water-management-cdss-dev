@@ -271,16 +271,39 @@ function checkRangeOptional(id, min, max, label) {
 // ============================================================
 //  MAIN VALIDATE
 // ============================================================
+// ============================================================
+//  第2段階の結果の有効性管理
+//  計算後に入力が変わったら、古い結果（計画・印刷ボタン）を消して再計算を求める
+// ============================================================
+let p2InputSnapshot = null;
+function getInputSnapshot() {
+  const parts = [consciousnessMode, urineMode];
+  document.querySelectorAll('input, select, textarea').forEach(el => {
+    const key = el.id || el.name || '';
+    if (el.type === 'checkbox' || el.type === 'radio') parts.push(key + '=' + (el.checked ? (el.value || '1') : ''));
+    else parts.push(key + '=' + el.value);
+  });
+  return parts.join('|');
+}
+function invalidateP2IfChanged() {
+  if (p2InputSnapshot === null) return;
+  if (getInputSnapshot() === p2InputSnapshot) return;
+  p2InputSnapshot = null;
+  const body = document.getElementById('p2-body');
+  if (body) body.innerHTML = '<div class="p2-warn-line">入力が変わりました。「第2段階へ進む」で再計算してください。前回の計算結果は無効のため表示していません。</div>';
+}
+
 function validate() {
   alerts = { critical: [], warning: [], info: [] };
   if (document.querySelector('.custom-select')) syncCustomSelects();
+  invalidateP2IfChanged();
 
   // --- Section 1 ---
   // 未入力（empty）と入力エラー（範囲外・論理矛盾）を区別して数える
   let s1Errors = 0, s1Empty = 0;
 
-  // Age
-  const ageR = checkRange('age', 0, 120, '年齢');
+  // Age（0歳は対象外：1〜120歳）
+  const ageR = checkRange('age', 1, 120, '年齢');
   if (!ageR.ok) { if (ageR.empty) s1Empty++; else s1Errors++; }
 
   // Sex
@@ -780,6 +803,7 @@ function resetAll() {
   if (gcsTotalEl) { gcsTotalEl.textContent = 'E? + V? + M? = —'; gcsTotalEl.className = 'gcs-total-display'; }
   const p2card = document.getElementById('card-p2');
   if (p2card) { p2card.style.display = 'none'; document.getElementById('p2-body').innerHTML = ''; }
+  p2InputSnapshot = null;
   setAutoField('weightDiff', '—', ''); setAutoField('weightDays', '—', '');
   setAutoField('shockIndex', '—', ''); setAutoField('egfr', '年齢・性別・Creを入力で計算', '');
   setAutoField('bunCreRatio', '—', '');
@@ -842,6 +866,8 @@ function buildFluidPlan2(dtype, naVal, egfr, hfRisk, kVal, volFactor = 1.0) {
   const kBad = egfr !== null && egfr < 30;
   const kCaut = egfr !== null && egfr >= 30 && egfr < 60;
   const kHigh = kVal !== null && kVal > 5.5; // 高K血症 → eGFRに関わらずK含有製剤不可
+  const kUnknown = egfr === null; // eGFR不明（Cre未入力・18歳未満など）→ 腎機能条件を満たしたとみなさない
+  const kHighPrimary = 'K > 5.5 → K含有製剤は使用不可。製剤は医師に確認';
   if (hfRisk) return {
     primary:'安易な補液は避け、水制限を優先', secondary:'医師へ製剤選択をコンサルト',
     steps:['希釈性低Na血症・心不全リスクを優先評価してください。','入出量・浮腫・ラ音・BNPを再確認してください。',`投与する場合は結果欄の制限係数に従い、通常量の${Math.round(volFactor * 100)}%から慎重に開始してください。`]
@@ -852,14 +878,14 @@ function buildFluidPlan2(dtype, naVal, egfr, hfRisk, kVal, volFactor = 1.0) {
     steps:['初日24時間は推定欠乏量の1/3程度から開始します。','維持輸液を別途加算し、Na補正速度を0.5 mEq/L/h以下に保ちます。','4時間後にバイタル・尿量、8時間後にNaを再評価します。']
   };
   if (dtype === 'hypo') return {
-    primary: 'ソルアセトF',
-    secondary: (naVal !== null && naVal < 125) ? 'Na<125：3%NaCl投与は必ず医師の指示で（ODS予防）' : (kHigh ? 'ソルアセトF K 4mEq/L含有：K > 5.5 — 使用可否を医師に確認' : (kBad ? 'ソルアセトF K 4mEq/L含有：尿量・K値を観察' : 'Na<125・神経症状は医師へ即報告')),
+    primary: kHigh ? kHighPrimary : 'ソルアセトF',
+    secondary: (naVal !== null && naVal < 125) ? 'Na<125：3%NaCl投与は必ず医師の指示で（ODS予防）' : (kHigh ? 'K > 5.5 → K含有製剤（ソルアセトF等）使用不可。医師に確認' : (kBad ? 'ソルアセトF K 4mEq/L含有：尿量・K値を観察' : 'Na<125・神経症状は医師へ即報告')),
     steps:['SBP < 90ならCriticalとして医師へ即報告してください。','循環維持が必要なら初期負荷（500mL/30分）を検討します。','Na < 125 や神経症状があれば必ず医師へ相談してください（ODS予防: ≤8〜10 mEq/day）。']
   };
   return {
-    primary: 'ソルアセトF',
-    secondary: kHigh ? 'K > 5.5 → K含有製剤（ソルデム3A等）使用不可。医師に確認' : (!kBad && !kCaut) ? 'ソルデム3A（K含有：eGFR>30のみ）' : 'K含有は医師に確認',
-    steps:['急性期は500〜1000mLの初期輸液負荷を検討します。','維持期は100〜150 mL/hを参考に尿量と血圧反応を観察します。',kHigh ? 'K > 5.5 → 高カリウム血症のためソルデム3A等K含有輸液は使用不可です。2〜4時間ごとにK再検査を。' : kBad ? 'eGFR<30 → ソルデム3A等K含有輸液は禁忌です。' : kCaut ? 'eGFR<60 → K含有は慎重に。尿量・Kを2〜4時間ごとに確認。' : 'ソルデム3A（K含有）はeGFR>30の場合に使用可能です。']
+    primary: kHigh ? kHighPrimary : 'ソルアセトF',
+    secondary: kHigh ? 'K > 5.5 → K含有製剤（ソルデム3A等）使用不可。医師に確認' : kUnknown ? 'eGFR不明のため、K含有製剤（ソルデム3A等）は医師に確認' : (!kBad && !kCaut) ? 'ソルデム3A（K含有：eGFR>30のみ）' : 'K含有は医師に確認',
+    steps:['急性期は500〜1000mLの初期輸液負荷を検討します。','維持期は100〜150 mL/hを参考に尿量と血圧反応を観察します。',kHigh ? 'K > 5.5 → 高カリウム血症のためソルデム3A等K含有輸液は使用不可です。2〜4時間ごとにK再検査を。' : kUnknown ? 'eGFR不明（Cre未入力または18歳未満）→ ソルデム3A等K含有輸液の使用可否は医師に確認してください。' : kBad ? 'eGFR<30 → ソルデム3A等K含有輸液は禁忌です。' : kCaut ? 'eGFR<60 → K含有は慎重に。尿量・Kを2〜4時間ごとに確認。' : 'ソルデム3A（K含有）はeGFR>30の場合に使用可能です。']
   };
 }
 
@@ -867,6 +893,10 @@ function buildFluidPlan2(dtype, naVal, egfr, hfRisk, kVal, volFactor = 1.0) {
 //  PHASE 2: 脱水タイプ分類・欠乏量計算・輸液計画
 // ============================================================
 function goNext() {
+  // 進行前に再検証（Critical・入力エラー・未入力があれば計算しない）
+  validate();
+  if (document.getElementById('btnNext').disabled) return;
+
   // --- 入力値収集 ---
   const age = v('age'), sex = vs('sex');
   const curWeight = v('curWeight'), usualWeight = v('usuWeight');
@@ -1175,10 +1205,11 @@ function goNext() {
   h += '</div></div>';
 
   // 免責
-  h += `<div class="p2-disclaimer">本ツールの計算結果はあくまで参考値であり、「診断」を行うものではありません。輸液処方は必ず医師の指示に基づき、患者の臨床症状・バイタルサイン・尿量・体重などを定期的に再評価しながら実施してください。<br>計算根拠：体重法（組織異化補正済み）、Na法（Adrogue-Madias原理）、Hct法（TBW×[1−基準Hct/実測Hct]）、TP法（TBW×[1−7.0/TP]）。TP法は血管内蛋白量が一定であることを前提とした簡易推定であり、異常蛋白産生・蛋白喪失・低栄養・肝疾患・浮腫などでは信頼性が低下します。維持輸液：小児 Holliday-Segar / 高齢者22.5 / 成人27.5 mL/kg/日 ± 発熱補正（日本の運用基準を主軸としつつ、NICE CG174 を補助的に参照して本ツールで採用した参考値。ただし NICE CG174 は重症腎疾患を適用除外としている）。推算Posm = 2×Na + Glu/18 + BUN/2.8。<br>BNP閾値（200/500 pg/mL）は心不全の診断閾値ではなく、本ツールで慎重投与判断のために採用した安全上の参考閾値です。Na補正の急性/慢性判定はNa異常の発症時期ではなく、体重変化日数を代用指標とした参考判定です。正確には病歴聴取と再検査で補完してください。<br>参照文献:<br>1. 日本循環器学会 / 日本心不全学会. (2025). 2025年改訂版 心不全診療ガイドライン. https://www.j-circ.or.jp/cms/wp-content/uploads/2025/03/JCS2025_Kato.pdf<br>2. 日本腎臓学会. (2012). エビデンスに基づくCKD診療ガイドライン2012. 東京医学社.<br>3. Matsuo, S., Imai, E., Horio, M., et al. (2009). Revised equations for estimated GFR from serum creatinine in Japan. American Journal of Kidney Diseases, 53(6), 982-992. doi: 10.1053/j.ajkd.2008.12.034<br>4. 日本静脈経腸栄養学会. (2013). 静脈経腸栄養ガイドライン 第3版. 照林社.<br>5. Holliday, M. A., &amp; Segar, W. E. (1957). The maintenance need for water in parenteral fluid therapy. Pediatrics, 19(5), 823-832.<br>6. McDonagh, T. A., et al. (2021). 2021 ESC Guidelines for the diagnosis and treatment of acute and chronic heart failure. European Heart Journal, 42, 3599-3726. doi: 10.1093/eurheartj/ehab368<br>7. National Institute for Health and Care Excellence. (2013, updated 2016). Intravenous fluid therapy in adults in hospital (CG174). https://www.nice.org.uk/guidance/cg174<br>8. Adrogue, H. J., &amp; Madias, N. E. (2000). Hypernatremia. New England Journal of Medicine, 342, 1493-1499. doi: 10.1056/NEJM200005253422106<br>9. Adrogue, H. J., &amp; Madias, N. E. (2000). Hyponatremia. New England Journal of Medicine, 342, 1581-1589. doi: 10.1056/NEJM200005253422107<br>10. Wiedemann, H. P., et al. (2006). Comparison of two fluid-management strategies in acute lung injury. New England Journal of Medicine, 354, 2564-2575. doi: 10.1056/NEJMoa062200</div>`;
+  h += `<div class="p2-disclaimer">本ツールの計算結果はあくまで参考値であり、「診断」を行うものではありません。輸液処方は必ず医師の指示に基づき、患者の臨床症状・バイタルサイン・尿量・体重などを定期的に再評価しながら実施してください。<br>計算根拠：体重法（組織異化補正済み）、Na法（Adrogue-Madias原理）、Hct法（TBW×[1−基準Hct/実測Hct]）、TP法（TBW×[1−7.0/TP]）。TP法は血管内蛋白量が一定であることを前提とした簡易推定であり、異常蛋白産生・蛋白喪失・低栄養・肝疾患・浮腫などでは信頼性が低下します。維持輸液：小児 Holliday-Segar / 高齢者22.5 / 成人27.5 mL/kg/日 ± 発熱補正（日本の運用基準を主軸としつつ、NICE CG174 を補助的に参照して本ツールで採用した参考値。ただし NICE CG174 は重症腎疾患を適用除外としている）。推算Posm = 2×Na + Glu/18 + BUN/2.8。<br>BNP閾値（200/500 pg/mL）は心不全の診断閾値ではなく、本ツールで慎重投与判断のために採用した安全上の参考閾値です。Na補正の急性/慢性判定はNa異常の発症時期ではなく、体重変化日数を代用指標とした参考判定です。正確には病歴聴取と再検査で補完してください。<br>参照文献:<br>1. 日本循環器学会 / 日本心不全学会. (2025). 2025年改訂版 心不全診療ガイドライン. https://www.j-circ.or.jp/cms/wp-content/uploads/2025/03/JCS2025_Kato.pdf<br>2. 日本腎臓学会. (2012). エビデンスに基づくCKD診療ガイドライン2012. 東京医学社.<br>3. Matsuo, S., Imai, E., Horio, M., et al. (2009). Revised equations for estimated GFR from serum creatinine in Japan. American Journal of Kidney Diseases, 53(6), 982-992. doi: 10.1053/j.ajkd.2008.12.034<br>4. 日本静脈経腸栄養学会. (2013). 静脈経腸栄養ガイドライン 第3版. 照林社.<br>5. Holliday, M. A., &amp; Segar, W. E. (1957). The maintenance need for water in parenteral fluid therapy. Pediatrics, 19(5), 823-832.<br>6. McDonagh, T. A., et al. (2021). 2021 ESC Guidelines for the diagnosis and treatment of acute and chronic heart failure. European Heart Journal, 42, 3599-3726. doi: 10.1093/eurheartj/ehab368<br>7. National Institute for Health and Care Excellence. (2013, updated 2016). Intravenous fluid therapy in adults in hospital (CG174). https://www.nice.org.uk/guidance/cg174<br>8. Adrogue, H. J., &amp; Madias, N. E. (2000). Hypernatremia. New England Journal of Medicine, 342, 1493-1499. doi: 10.1056/NEJM200005183422006<br>9. Adrogue, H. J., &amp; Madias, N. E. (2000). Hyponatremia. New England Journal of Medicine, 342, 1581-1589. doi: 10.1056/NEJM200005253422107<br>10. Wiedemann, H. P., et al. (2006). Comparison of two fluid-management strategies in acute lung injury. New England Journal of Medicine, 354, 2564-2575. doi: 10.1056/NEJMoa062200</div>`;
   h += `<button class="p2-print-btn" onclick="window.print()">印刷 / PDF 保存</button>`;
 
   document.getElementById('p2-body').innerHTML = h;
+  p2InputSnapshot = getInputSnapshot(); // この入力で計算した結果として記録
   const card = document.getElementById('card-p2');
   card.style.display = '';
   card.scrollIntoView({ behavior: 'smooth', block: 'start' });
