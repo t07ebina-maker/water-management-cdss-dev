@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>特定行為（水分管理）判断支援ツール</title>
-  <link rel="stylesheet" href="style.css?v=20260821-ui2">
+  <link rel="stylesheet" href="style.css?v=20261106-fix1">
 </head>
 <body>
 
@@ -57,7 +57,7 @@
       <div class="gridAuto">
         <div class="form-group">
           <label class="fl" for="age">年齢 <span class="req">*</span> <span class="unit">歳</span></label>
-          <input type="number" id="age" min="0" max="120" placeholder="例: 75" oninput="validate()">
+          <input type="number" id="age" min="1" max="120" placeholder="例: 75" oninput="validate()">
           <div class="fmsg" id="age-msg"></div>
         </div>
         <div class="form-group">
@@ -66,7 +66,6 @@
             <option value="">選択してください</option>
             <option value="male">男性</option>
             <option value="female">女性</option>
-            <option value="other">その他</option>
           </select>
           <div class="fmsg" id="sex-msg"></div>
         </div>
@@ -489,7 +488,7 @@
 
 </div><!-- /main -->
 
-<script src="main.js?v=20260821-ui2" defer></script>
+<script src="main.js?v=20261106-fix1" defer></script>
 </body>
 </html>
 
