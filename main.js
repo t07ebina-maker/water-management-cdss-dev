@@ -867,7 +867,9 @@ function buildFluidPlan2(dtype, naVal, egfr, hfRisk, kVal, volFactor = 1.0) {
   const kCaut = egfr !== null && egfr >= 30 && egfr < 60;
   const kHigh = kVal !== null && kVal > 5.5; // 高K血症 → eGFRに関わらずK含有製剤不可
   const kUnknown = egfr === null; // eGFR不明（Cre未入力・18歳未満など）→ 腎機能条件を満たしたとみなさない
+  const kMissing = kVal === null; // K未入力 → Kが高くないとはみなさない
   const kHighPrimary = 'K > 5.5 → K含有製剤は使用不可。製剤は医師に確認';
+  const kMissingPrimary = 'K未入力のため、K含有製剤は医師に確認';
   if (hfRisk) return {
     primary:'安易な補液は避け、水制限を優先', secondary:'医師へ製剤選択をコンサルト',
     steps:['希釈性低Na血症・心不全リスクを優先評価してください。','入出量・浮腫・ラ音・BNPを再確認してください。',`投与する場合は結果欄の制限係数に従い、通常量の${Math.round(volFactor * 100)}%から慎重に開始してください。`]
@@ -878,14 +880,14 @@ function buildFluidPlan2(dtype, naVal, egfr, hfRisk, kVal, volFactor = 1.0) {
     steps:['初日24時間は推定欠乏量の1/3程度から開始します。','維持輸液を別途加算し、Na補正速度を0.5 mEq/L/h以下に保ちます。','4時間後にバイタル・尿量、8時間後にNaを再評価します。']
   };
   if (dtype === 'hypo') return {
-    primary: kHigh ? kHighPrimary : 'ソルアセトF',
-    secondary: (naVal !== null && naVal < 125) ? 'Na<125：3%NaCl投与は必ず医師の指示で（ODS予防）' : (kHigh ? 'K > 5.5 → K含有製剤（ソルアセトF等）使用不可。医師に確認' : (kBad ? 'ソルアセトF K 4mEq/L含有：尿量・K値を観察' : 'Na<125・神経症状は医師へ即報告')),
+    primary: kHigh ? kHighPrimary : kMissing ? kMissingPrimary : 'ソルアセトF',
+    secondary: (naVal !== null && naVal < 125) ? 'Na<125：3%NaCl投与は必ず医師の指示で（ODS予防）' : (kHigh ? 'K > 5.5 → K含有製剤（ソルアセトF等）使用不可。医師に確認' : kMissing ? 'K未入力のため、K含有製剤（ソルアセトF等）は医師に確認' : (kBad ? 'ソルアセトF K 4mEq/L含有：尿量・K値を観察' : 'Na<125・神経症状は医師へ即報告')),
     steps:['SBP < 90ならCriticalとして医師へ即報告してください。','循環維持が必要なら初期負荷（500mL/30分）を検討します。','Na < 125 や神経症状があれば必ず医師へ相談してください（ODS予防: ≤8〜10 mEq/day）。']
   };
   return {
-    primary: kHigh ? kHighPrimary : 'ソルアセトF',
-    secondary: kHigh ? 'K > 5.5 → K含有製剤（ソルデム3A等）使用不可。医師に確認' : kUnknown ? 'eGFR不明のため、K含有製剤（ソルデム3A等）は医師に確認' : (!kBad && !kCaut) ? 'ソルデム3A（K含有：eGFR≧60のみ）' : 'K含有は医師に確認',
-    steps:['急性期は500〜1000mLの初期輸液負荷を検討します。','維持期は100〜150 mL/hを参考に尿量と血圧反応を観察します。',kHigh ? 'K > 5.5 → 高カリウム血症のためソルデム3A等K含有輸液は使用不可です。2〜4時間ごとにK再検査を。' : kUnknown ? 'eGFR不明（Cre未入力または18歳未満）→ ソルデム3A等K含有輸液の使用可否は医師に確認してください。' : kBad ? 'eGFR<30 → ソルデム3A等K含有輸液は禁忌です。' : kCaut ? 'eGFR<60 → K含有は慎重に。尿量・Kを2〜4時間ごとに確認。' : 'ソルデム3A（K含有）はeGFR≧60の場合に使用可能です。']
+    primary: kHigh ? kHighPrimary : kMissing ? kMissingPrimary : 'ソルアセトF',
+    secondary: kHigh ? 'K > 5.5 → K含有製剤（ソルデム3A等）使用不可。医師に確認' : kMissing ? 'K未入力のため、K含有製剤（ソルデム3A等）は医師に確認' : kUnknown ? 'eGFR不明のため、K含有製剤（ソルデム3A等）は医師に確認' : (!kBad && !kCaut) ? 'ソルデム3A（K含有：eGFR≧60のみ）' : 'K含有は医師に確認',
+    steps:['急性期は500〜1000mLの初期輸液負荷を検討します。','維持期は100〜150 mL/hを参考に尿量と血圧反応を観察します。',kHigh ? 'K > 5.5 → 高カリウム血症のためソルデム3A等K含有輸液は使用不可です。2〜4時間ごとにK再検査を。' : kMissing ? 'K未入力 → ソルアセトF・ソルデム3A等K含有輸液の使用可否は、Kを測定のうえ医師に確認してください。' : kUnknown ? 'eGFR不明（Cre未入力または18歳未満）→ ソルデム3A等K含有輸液の使用可否は医師に確認してください。' : kBad ? 'eGFR<30 → ソルデム3A等K含有輸液は禁忌です。' : kCaut ? 'eGFR<60 → K含有は慎重に。尿量・Kを2〜4時間ごとに確認。' : 'ソルデム3A（K含有）はeGFR≧60の場合に使用可能です。']
   };
 }
 
