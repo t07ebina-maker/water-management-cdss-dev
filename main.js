@@ -672,6 +672,26 @@ function validate() {
   }
   setSection('s5-status', s5Errors, s5Empty);
 
+  // --- Section 6（前日の出入り・すべて任意） ---
+  let s6Errors = 0;
+  [['prevDrink','飲水量',20000],['prevTube','経管栄養の量',20000],['prevDrain','ドレーン・胃管の排液',20000],
+   ['prevStoma','ストーマ・瘻孔の排液',20000],['prevDiarrhea','下痢の量',20000],['prevVomit','嘔吐の量',20000],
+   ['prevOther','その他の排液',20000],['mealPct','食事の摂取割合',10]].forEach(([id, label, max]) => {
+    const r = checkRangeOptional(id, 0, max, label);
+    if (!r.ok && !r.empty) s6Errors++;
+  });
+  { // 補正の何日目か：1〜5の整数だけ受け付ける
+    const cdEl = document.getElementById('corrDay');
+    if (cdEl && cdEl.value.trim() !== '') {
+      const cdv = v('corrDay');
+      if (!(Number.isInteger(cdv) && cdv >= 1 && cdv <= 5)) { setField('corrDay', 'error', '補正の何日目か: 1〜5の整数を選んでください'); s6Errors++; }
+      else setField('corrDay', '', '');
+    }
+    const fd = checkRangeOptional('firstDef', 1, 50000, '最初の欠乏量'); if (!fd.ok && !fd.empty) s6Errors++;
+  }
+  const s6El = document.getElementById('s6-status');
+  if (s6El) { s6El.className = s6Errors > 0 ? 'c-status error' : 'c-status waiting'; s6El.textContent = s6Errors > 0 ? `エラー ${s6Errors}件` : '任意'; }
+
   // ============================================================
   //  UPDATE ALERT DISPLAY
   // ============================================================
@@ -695,7 +715,7 @@ function validate() {
   wCount.className = 'status-badge ' + (totalWarn > 0 ? 'warning' : 'ok');
   iCount.className = 'status-badge ' + (totalInfo > 0 ? 'warning' : 'ok');
 
-  const totalErrors = s1Errors + s2Errors + s4Errors + s5Errors;
+  const totalErrors = s1Errors + s2Errors + s4Errors + s5Errors + s6Errors;
   const totalEmpty = s1Empty + s2Empty + s5Empty;
   const btnNext = document.getElementById('btnNext');
   const footerStat = document.getElementById('footerStat');
@@ -785,6 +805,7 @@ function setSection(id, errors, empties = 0) {
 function resetAll() {
   if (!confirm('すべての入力をリセットしますか？')) return;
   document.querySelectorAll('input[type="number"], input[type="date"], input[type="text"]').forEach(el => el.value = '');
+  { const cd = document.getElementById('corrDay'); if (cd) cd.value = '1'; }
   // 現体重測定日は初期表示と同じく「今日」を復元する
   const _rNow = new Date();
   const _rPad = n => String(n).padStart(2, '0');
@@ -807,8 +828,8 @@ function resetAll() {
   setAutoField('weightDiff', '—', ''); setAutoField('weightDays', '—', '');
   setAutoField('shockIndex', '—', ''); setAutoField('egfr', '年齢・性別・Creを入力で計算', '');
   setAutoField('bunCreRatio', '—', '');
-  ['s1-status','s2-status','s3-status','s4-status','s5-status'].forEach(id => {
-    const el = document.getElementById(id); if (el) { el.className = 'c-status waiting'; el.textContent = '入力待ち'; }
+  ['s1-status','s2-status','s3-status','s4-status','s5-status','s6-status'].forEach(id => {
+    const el = document.getElementById(id); if (el) { el.className = 'c-status waiting'; el.textContent = id === 's6-status' ? '任意' : '入力待ち'; }
   });
   alerts = { critical: [], warning: [], info: [] };
   renderAlerts();
@@ -862,32 +883,35 @@ function getMaintenance2(wt, age, temp) {
   const adj = Math.round(base * ff);
   return { base:Math.round(base), adjusted:adj, hourly:Math.round(adj/24*10)/10, feverF:Math.round(ff*100)/100, mode };
 }
-function buildFluidPlan2(dtype, naVal, egfr, hfRisk, kVal, volFactor = 1.0) {
+function buildFluidPlan2(dtype, naVal, egfr, hfRisk, kVal, volFactor = 1.0, gluVal = null) {
   const kBad = egfr !== null && egfr < 30;
   const kCaut = egfr !== null && egfr >= 30 && egfr < 60;
   const kHigh = kVal !== null && kVal > 5.5; // 高K血症 → eGFRに関わらずK含有製剤不可
   const kUnknown = egfr === null; // eGFR不明（Cre未入力・18歳未満など）→ 腎機能条件を満たしたとみなさない
   const kMissing = kVal === null; // K未入力 → Kが高くないとはみなさない
+  const kMid = kVal !== null && kVal >= 5.0 && kVal <= 5.5; // V1.15: K 5.0〜5.5 → ソルデム3A（K 20 mEq/L）は医師に確認
+  const gluHigh = gluVal !== null && gluVal > 250; // V1.15: Glu>250 → ブドウ糖を含む製剤は候補に出さない
+  const gluHyperText = 'Glu>250のため、ブドウ糖を含む製剤（5%ブドウ糖液・KN1号）は医師に確認';
   const kHighPrimary = 'K > 5.5 → K含有製剤は使用不可。製剤は医師に確認';
   const kMissingPrimary = 'K未入力のため、K含有製剤は医師に確認';
   if (hfRisk) return {
-    primary:'安易な補液は避け、水制限を優先', secondary:'医師へ製剤選択をコンサルト',
-    steps:['希釈性低Na血症・心不全リスクを優先評価してください。','入出量・浮腫・ラ音・BNPを再確認してください。',`投与する場合は結果欄の制限係数に従い、通常量の${Math.round(volFactor * 100)}%から慎重に開始してください。`]
+    primary:'心不全リスクあり。補液の適否と量は医師に確認', secondary:'医師へ製剤選択をコンサルト',
+    steps:[(naVal !== null && naVal > 145) ? '高Naがあります。水制限は行わず、補液の方法を医師に確認してください。' : (naVal !== null && naVal < 135) ? '希釈性低Na血症・心不全リスクを優先評価してください。' : '心不全リスクを優先評価してください。','入出量・浮腫・ラ音・BNPを再確認してください。',`投与する場合は結果欄の制限係数に従い、通常量の${Math.round(volFactor * 100)}%から慎重に開始してください。`, ...((naVal !== null && naVal < 135) ? ['尿量が急に増えたら、Naが急に上がることがあります。Naを再検し、医師へ報告してください。'] : [])]
   };
   if (dtype === 'hyper') return {
-    primary: kBad ? '5%ブドウ糖液（K非含有）' : '5%ブドウ糖液',
-    secondary: 'KN1号（1号液）',
+    primary: gluHigh ? gluHyperText : (kBad ? '5%ブドウ糖液（K非含有）' : '5%ブドウ糖液'),
+    secondary: gluHigh ? gluHyperText : 'KN1号（1号液）',
     steps:['初日24時間は推定欠乏量の1/3程度から開始します。','維持輸液を別途加算し、Na補正速度を0.5 mEq/L/h以下に保ちます。','4時間後にバイタル・尿量、8時間後にNaを再評価します。']
   };
   if (dtype === 'hypo') return {
     primary: kHigh ? kHighPrimary : kMissing ? kMissingPrimary : 'ソルアセトF',
     secondary: (naVal !== null && naVal < 125) ? 'Na<125：3%NaCl投与は必ず医師の指示で（ODS予防）' : (kHigh ? 'K > 5.5 → K含有製剤（ソルアセトF等）使用不可。医師に確認' : kMissing ? 'K未入力のため、K含有製剤（ソルアセトF等）は医師に確認' : (kBad ? 'ソルアセトF K 4mEq/L含有：尿量・K値を観察' : 'Na<125・神経症状は医師へ即報告')),
-    steps:['SBP < 90ならCriticalとして医師へ即報告してください。','循環維持が必要なら初期負荷（500mL/30分）を検討します。','Na < 125 や神経症状があれば必ず医師へ相談してください（ODS予防: ≤8〜10 mEq/day）。']
+    steps:['SBP < 90ならCriticalとして医師へ即報告してください。','循環維持が必要なら初期負荷（500mL/30分）を検討します。','Na < 125 や神経症状があれば必ず医師へ相談してください（ODS予防: ≤8〜10 mEq/day）。','尿量が急に増えたら、Naが急に上がることがあります。Naを再検し、医師へ報告してください。']
   };
   return {
     primary: kHigh ? kHighPrimary : kMissing ? kMissingPrimary : 'ソルアセトF',
-    secondary: kHigh ? 'K > 5.5 → K含有製剤（ソルデム3A等）使用不可。医師に確認' : kMissing ? 'K未入力のため、K含有製剤（ソルデム3A等）は医師に確認' : kUnknown ? 'eGFR不明のため、K含有製剤（ソルデム3A等）は医師に確認' : (!kBad && !kCaut) ? 'ソルデム3A（K含有：eGFR≧60のみ）' : 'K含有は医師に確認',
-    steps:['急性期は500〜1000mLの初期輸液負荷を検討します。','維持期は100〜150 mL/hを参考に尿量と血圧反応を観察します。',kHigh ? 'K > 5.5 → 高カリウム血症のためソルデム3A等K含有輸液は使用不可です。2〜4時間ごとにK再検査を。' : kMissing ? 'K未入力 → ソルアセトF・ソルデム3A等K含有輸液の使用可否は、Kを測定のうえ医師に確認してください。' : kUnknown ? 'eGFR不明（Cre未入力または18歳未満）→ ソルデム3A等K含有輸液の使用可否は医師に確認してください。' : kBad ? 'eGFR<30 → ソルデム3A等K含有輸液は禁忌です。' : kCaut ? 'eGFR<60 → K含有は慎重に。尿量・Kを2〜4時間ごとに確認。' : 'ソルデム3A（K含有）はeGFR≧60の場合に使用可能です。']
+    secondary: gluHigh ? 'Glu>250のため、ソルデム3Aは医師に確認' : kHigh ? 'K > 5.5 → K含有製剤（ソルデム3A等）使用不可。医師に確認' : kMissing ? 'K未入力のため、K含有製剤（ソルデム3A等）は医師に確認' : kMid ? 'K≧5.0のため、ソルデム3A（K 20 mEq/L）は医師に確認' : kUnknown ? 'eGFR不明のため、K含有製剤（ソルデム3A等）は医師に確認' : (!kBad && !kCaut) ? 'ソルデム3A（K含有：eGFR≧60のみ）' : 'K含有は医師に確認',
+    steps:['急性期は500〜1000mLの初期輸液負荷を検討します。','維持期は100〜150 mL/hを参考に尿量と血圧反応を観察します。',gluHigh ? 'Glu>250 → ソルデム3A（ブドウ糖含有）は医師に確認してください。' : kHigh ? 'K > 5.5 → 高カリウム血症のためソルデム3A等K含有輸液は使用不可です。2〜4時間ごとにK再検査を。' : kMissing ? 'K未入力 → ソルアセトF・ソルデム3A等K含有輸液の使用可否は、Kを測定のうえ医師に確認してください。' : kMid ? 'K≧5.0 → ソルデム3A（K 20 mEq/L）は医師に確認してください。' : kUnknown ? 'eGFR不明（Cre未入力または18歳未満）→ ソルデム3A等K含有輸液の使用可否は医師に確認してください。' : kBad ? 'eGFR<30 → ソルデム3A等K含有輸液は禁忌です。' : kCaut ? 'eGFR<60 → K含有は慎重に。尿量・Kを2〜4時間ごとに確認。' : 'ソルデム3A（K含有）はeGFR≧60の場合に使用可能です。']
   };
 }
 
@@ -922,24 +946,22 @@ function goNext() {
     ? Math.round((2 * naVal + gluVal / 18 + bunVal / 2.8) * 10) / 10
     : null;
 
-  // --- 1. 脱水タイプ分類（Posm優先→Na fallback）---
+  // --- 1. 脱水タイプ分類（V1.15：Naで分類。Posmは参考表示のみ）---
   let dtype, dlabel, dcolor, dbasis, pathology;
-  const classVal = posm !== null ? posm : naVal;
-  const classMode = posm !== null ? 'posm' : (naVal !== null ? 'na' : null);
-  if (!classMode) {
-    dtype = 'unknown'; dlabel = '不明（Na・Posm 未算出）'; dcolor = 'unknown'; pathology = '—';
+  if (naVal === null) {
+    dtype = 'unknown'; dlabel = '不明（Na 未入力）'; dcolor = 'unknown'; pathology = '—';
     dbasis = 'Na が未入力のため分類不可。臨床所見（口腔乾燥・ツルゴール低下・浮腫など）から判断し、Na 測定を強く推奨します。';
-  } else if ((classMode === 'posm' && classVal > 295) || (classMode === 'na' && naVal > 145)) {
+  } else if (naVal > 145) {
     dtype = 'hyper'; dcolor = 'hyper'; pathology = '細胞内脱水';
-    dlabel = classMode === 'posm' ? '高張性脱水（水欠乏型）　Posm ' + classVal + ' mOsm/L' : '高張性脱水（水欠乏型）　Na ' + naVal + ' mEq/L';
+    dlabel = '高張性脱水（水欠乏型）　Na ' + naVal + ' mEq/L';
     dbasis = '体内水分の相対的不足。自由水（低張液）で補充。Na 補正速度 ≤ 0.5 mEq/L/h、最大 10〜12 mEq/day を超えないこと。';
-  } else if ((classMode === 'posm' && classVal < 285) || (classMode === 'na' && naVal < 135)) {
+  } else if (naVal < 135) {
     dtype = 'hypo'; dcolor = 'hypo'; pathology = '細胞外液減少＋細胞内浮腫';
-    dlabel = classMode === 'posm' ? '低張性脱水（Na欠乏型）　Posm ' + classVal + ' mOsm/L' : '低張性脱水（Na欠乏型）　Na ' + naVal + ' mEq/L';
+    dlabel = '低張性脱水（Na欠乏型）　Na ' + naVal + ' mEq/L';
     dbasis = 'Na 欠乏が主体。等張〜高張 NaCl 液で補充。慢性例：補正速度 ≤ 8〜10 mEq/day（ODS 予防）。';
   } else {
     dtype = 'iso'; dcolor = 'iso'; pathology = '細胞外液減少';
-    dlabel = classMode === 'posm' ? '等張性脱水　Posm ' + classVal + ' mOsm/L' : '等張性脱水　Na ' + naVal + ' mEq/L';
+    dlabel = '等張性脱水　Na ' + naVal + ' mEq/L';
     dbasis = '水分と電解質がほぼ等比で失われている。乳酸リンゲル/酢酸リンゲル/生食などの等張液で補充。';
   }
 
@@ -1002,35 +1024,100 @@ function goNext() {
   if (hfSevere) { volFactor = 0.50; volLabel = '重症心不全または溢水では、通常の50%に制限'; }
   else if (hfCaution || kRestrict || ckdCaution) { volFactor = 0.75; volLabel = '心不全リスクまたは腎機能障害では、通常の75%に制限'; }
 
-  const fluidPlan = buildFluidPlan2(dtype, naVal, egfrVal, hfRisk, kVal, volFactor);
+  const fluidPlan = buildFluidPlan2(dtype, naVal, egfrVal, hfRisk, kVal, volFactor, gluVal);
   if (avgDefMl === null && !hfRisk) {
     fluidPlan.steps = [
-      '欠乏量が算出不可のため、欠乏補正量・Day 1〜3の欠乏補正プロトコルは提示しません。',
+      '欠乏量が算出不可のため、欠乏補正量・Day 1〜5の欠乏補正プロトコルは提示しません。',
       '維持輸液は現体重で別途算出し、Na補正速度を0.5 mEq/L/h以下に保ちます。',
       '4時間後にバイタル・尿量、8時間後にNaを再評価します。'
     ];
+    if (dtype === 'hypo') fluidPlan.steps.push('尿量が急に増えたら、Naが急に上がることがあります。Naを再検し、医師へ報告してください。');
   }
 
   const adjMnt = Math.round(mnt.adjusted * volFactor);
-  const proto = avgDefMl !== null && mnt.adjusted !== null ? [
-    { day:'Day 1', def:Math.round(avgDefMl/3 * volFactor), note:'提案値。医師承認後に実施' + (volFactor < 1 ? '（減量適用）' : '') + '。' },
-    { day:'Day 2', def:Math.round(avgDefMl*2/3 * volFactor), note:'参考試算。4〜8時間後の再評価後に医師と再協議' + (volFactor < 1 ? '（減量適用）' : '') + '。' },
-    { day:'Day 3', def:0, note:'参考試算。Day 2再評価後に医師指示を再確認。維持中心・経口移行を検討' }
-  ].map(r => ({ ...r, mnt:adjMnt, total:r.def+adjMnt, rate:Math.round((r.def+adjMnt)/24) })) : [];
 
-  // --- 8. Na補正速度安全計算（Adrogue-Madias） ---
+  // --- 前日の出入り（V1.15・すべて任意。未入力は null） ---
+  const pv = id => { const x = v(id); return (x !== null && x >= 0) ? x : null; };
+  const prevDrink = pv('prevDrink'), prevTube = pv('prevTube');
+  const prevLossParts = [pv('prevDrain'), pv('prevStoma'), pv('prevDiarrhea'), pv('prevVomit'), pv('prevOther')];
+  const mealPct = pv('mealPct');
+  const prevAny = [prevDrink, prevTube, ...prevLossParts].some(x => x !== null);
+  const prevLoss = prevLossParts.reduce((a, x) => a + (x || 0), 0);
+  const prevIntake = (prevDrink || 0) + (prevTube || 0);
+
+  // --- 補正の何日目か（V1.15 v2。1〜5、空欄は1） ---
+  const corrDayRaw = v('corrDay');
+  const corrDay = (Number.isInteger(corrDayRaw) && corrDayRaw >= 1 && corrDayRaw <= 5) ? corrDayRaw : 1; // 1〜5の整数以外は受け付けない（空欄は1）
+  const firstDefRaw = v('firstDef');
+  const firstDef = (firstDefRaw !== null && firstDefRaw > 0) ? firstDefRaw : null; // 最初の欠乏量（2日目・3日目だけ使う）
+  // 欠乏補正は3日で100%。その日に計算した欠乏量に対する割合：1日目1/3、2日目1/2、3日目100%、4〜5日目0
+  const shareToday = [1/3, 1/2, 1, 0, 0][corrDay - 1];
+
+  // --- Na補正の目標と、欠乏補正の当日分（高張性のみ目標で減らす） ---
   const tbwL = (curWeight && tbwCoef) ? Math.round(curWeight * tbwCoef * 10) / 10 : null;
-  const adroguePerL = (tbwL !== null && naVal !== null) ? Math.round(((0 - naVal) / (tbwL + 1)) * 100) / 100 : null;
-  const naChgH = adroguePerL !== null ? Math.abs(Math.round(adroguePerL / 24 * 1000) / 1000) : null;
+  const adrogueRaw = (tbwL !== null && naVal !== null) ? (0 - naVal) / (tbwL + 1) : null;
+  const adroguePerL = adrogueRaw !== null ? Math.round(adrogueRaw * 100) / 100 : null;
   const chronic = weightDays === null || weightDays >= 2;
-  let naSafetyLabel = '—', naSafetyClass = '';
-  if (naChgH !== null) {
-    // 上限: 急性（<48h相当）≤1.0 / 慢性（≥48h相当・不明時は安全側で慢性扱い）≤0.5 mEq/L/h
-    if (naChgH <= 0.5) { naSafetyLabel = '安全範囲内（≤ 0.5 mEq/L/h）'; naSafetyClass = 'color:var(--success)'; }
-    else if (naChgH <= 1.0 && !chronic) { naSafetyLabel = '要注意（急性のみ ≤ 1.0 mEq/L/h 許容）'; naSafetyClass = 'color:#E65100'; }
-    else if (naChgH <= 1.0) { naSafetyLabel = '危険（慢性では 0.5 mEq/L/h 以下を厳守）'; naSafetyClass = 'color:var(--danger)'; }
-    else { naSafetyLabel = '危険（> 1.0 mEq/L/h）'; naSafetyClass = 'color:var(--danger)'; }
+  const naTarget24 = chronic ? 8 : 10;   // 計画の目標（mEq/L/日）
+  const naReport24 = chronic ? 10 : 12;  // 医師へ報告する線（mEq/L/24時間）
+  // 2日目・3日目の欠乏補正の当日分は、「その日の欠乏量×割合」と「最初の欠乏量の1/3」の少ないほう。減量係数はその後にかける。
+  // 最初の欠乏量が未入力のときは、その日の欠乏量の1/3（1日目と同じ配分）にする。
+  const capBase = avgDefMl !== null ? ((corrDay >= 2 && firstDef !== null) ? firstDef / 3 : avgDefMl / 3) : null;
+  const defShareBase = avgDefMl !== null ? avgDefMl * shareToday : 0;
+  const defCapApplied = avgDefMl !== null && corrDay >= 2 && corrDay <= 3 && firstDef !== null && defShareBase > capBase + 0.5; // 欠乏量が計画どおり減っていない
+  const defNoFirst = avgDefMl !== null && corrDay >= 2 && corrDay <= 3 && firstDef === null;                                     // 最初の欠乏量が未入力
+  const defAlloc = avgDefMl !== null ? Math.round((corrDay >= 2 ? Math.min(defShareBase, capBase) : defShareBase) * volFactor) : 0; // 配分で出した量（減量係数後）
+  const naPerLAbs = adrogueRaw !== null ? Math.abs(adrogueRaw) : null;
+  const defLimitMl = (dtype === 'hyper' && naPerLAbs) ? Math.floor(naTarget24 / naPerLAbs * 1000) : null; // 目標に収まる量
+  const defReduced = defLimitMl !== null && defLimitMl < defAlloc; // Naの目標で減らしたか
+  const defToday = defReduced ? defLimitMl : defAlloc;              // 欠乏補正の当日分（調整しない）
+  // 1日の合計だけを100 mL単位に四捨五入する（規格200・500・1000 mLの組み合わせで作れる量）。1回だけ調整、維持量と欠乏補正は調整しない。
+  // 高張性で、切り上げるとNaの試算（調整後の合計に含まれる欠乏補正の分）が目標を超えるときだけ、切り下げる。
+  const roundTotal = (rawTotal, defPart) => {
+    let t = Math.round(rawTotal / 100) * 100;
+    if (dtype === 'hyper' && naPerLAbs && t > rawTotal && naPerLAbs * (defPart + (t - rawTotal)) / 1000 > naTarget24) t = Math.floor(rawTotal / 100) * 100;
+    return t;
+  };
+
+  // 当日の輸液量 ＝ 維持量 ＋ 欠乏補正の当日分 ＋ 前日の排液・下痢・嘔吐 − 前日の飲水・経管栄養
+  // 減量係数は維持量と欠乏補正にだけかける。0以下は0。
+  const day1Raw = mnt.adjusted !== null ? adjMnt + defToday + prevLoss - prevIntake : null;
+  const day1RawPos = day1Raw !== null ? Math.max(day1Raw, 0) : null; // 調整前の合計
+  const day1Total = day1RawPos !== null ? roundTotal(day1RawPos, defToday) : null;
+  const defEff1 = day1RawPos !== null ? Math.max(0, defToday + (day1Total - day1RawPos)) : defToday; // 調整後の合計に含まれる欠乏補正
+  const day1Zero = day1Raw !== null && day1Raw <= 0;                    // 計算上0以下
+  const day1Small = day1Raw !== null && day1Raw > 0 && day1Total === 0; // 50 mL未満で0に調整した
+
+  // 当日より後の日は仮の枠：最初の欠乏量D0（当日の欠乏量から逆算）の約33%・33%・34%、4〜5日目は0
+  const remainFrac = [1, 2/3, 1/3][corrDay - 1]; // 4〜5日目は未定義
+  const d0 = (avgDefMl !== null && remainFrac) ? avgDefMl / remainFrac : null;
+  const provDef = n => {
+    if (d0 === null || n < 2 || n > 3) return 0;
+    const dd = Math.round(d0 / 3 * volFactor);
+    const v0 = n === 2 ? dd : Math.round(d0 * volFactor) - 2 * dd;
+    // 高張性では、当日と同じNaの目標を超えない量までにする（超える分は翌日以降の再計算に持ち越す）
+    const v1 = capBase !== null ? Math.min(v0, Math.round(capBase * volFactor)) : v0; // 仮の枠にも同じ上限（最初の欠乏量の1/3）
+    return (defLimitMl !== null && v1 > defLimitMl) ? defLimitMl : v1;
+  };
+  const provCapped = defLimitMl !== null && [2, 3].some(n => n > corrDay && d0 !== null && Math.round(d0 / 3 * volFactor) > defLimitMl);
+  const proto = [];
+  if (avgDefMl !== null && mnt.adjusted !== null) {
+    for (let n = corrDay; n <= 5; n++) {
+      if (n === corrDay) {
+        proto.push({ day:'Day ' + n, cur:true, def:defToday, mnt:adjMnt, plus:prevLoss, minus:prevIntake, raw:day1RawPos, total:day1Total, rate:Math.round(day1Total / 24),
+          note:'当日。提案値。医師承認後に実施' + (volFactor < 1 ? '（減量適用）' : '') + '。' });
+      } else {
+        const d = provDef(n);
+        proto.push({ day:'Day ' + n, cur:false, def:d, mnt:adjMnt, plus:0, minus:0, raw:d + adjMnt, total:roundTotal(d + adjMnt, d), rate:Math.round(roundTotal(d + adjMnt, d) / 24),
+          note:'仮の値。翌日に、その日の値・前日の出入り・何日目かを入力して再計算する' + (volFactor < 1 ? '（減量適用）' : '') + '。' });
+      }
+    }
   }
+
+  // --- Na補正の試算（V1.15 v2：高張性のみ。欠乏補正の当日分だけを5%ブドウ糖液で入れた場合。維持量は含めない） ---
+  const naZero = day1Total !== null && day1Total === 0; // 輸液量が0のときは試算を出さない
+  const na24 = (adrogueRaw !== null && avgDefMl !== null && !naZero) ? adrogueRaw * Math.min(defEff1, day1Total) / 1000 : null;
+  const na24Round = na24 !== null ? Math.round(na24 * 10) / 10 : null;
 
   // --- HTML構築 ---
   const fmt = (n, d=0) => n !== null ? n.toFixed(d) : '—';
@@ -1061,19 +1148,7 @@ function goNext() {
   h += `<div class="band"><div class="band-title blue">総合判定</div><div class="band-body">`;
   h += `<table class="p2-tbl">`;
   h += row('脱水タイプ', `<span class="p2-type-badge ${dcolor}" style="padding:3px 10px;font-size:13px;">${dlabel}</span>`, dbasis.substring(0,50)+'…');
-  if (classMode === 'posm' && naVal !== null) {
-    const naCategory = naVal > 145 ? '高張性' : naVal < 135 ? '低張性' : '等張性';
-    const posmCategory = posm > 295 ? '高張性' : posm < 285 ? '低張性' : '等張性';
-    const mismatch = naCategory !== posmCategory;
-    const posmNote = mismatch
-      ? `※ NaからはNaCategory（${naCategory}）と推定されますが、Posmを優先して${posmCategory}と判定しています。`
-      : `※ Posmを優先して判定しています（Naとの整合あり）。`;
-    h += `<tr><td colspan="3" style="font-size:11px;color:#555;padding:4px 8px;background:#f5f5f5;border-radius:4px;">`
-      + `本ツールはNa・Glu・BUNから推算したPosmが得られる場合、血清Na単独よりPosmを優先して脱水タイプを判定します。`
-      + (mismatch ? `　<strong style="color:#E65100;">見かけ上のNa区分（${naCategory}）と最終判定（${posmCategory}）が一致していません。</strong>` : '')
-      + `</td></tr>`;
-  }
-  h += row('推算血清浸透圧', posm !== null ? posm + ' mOsm/L' : '（Na・Glu・BUN を入力すると算出）', '正常: 285〜295');
+  h += row('推算血清浸透圧（参考）', posm !== null ? posm + ' mOsm/L' : '（Na・Glu・BUN を入力すると算出）', '正常: 285〜295。脱水タイプの分類には使いません');
   h += row('eGFR / CKD', egfrVal !== null ? egfrVal + ' mL/分/1.73m²' : '（Cre 未入力）', egfrStg);
   h += row('Shock Index', si !== null ? si : '（HR・SBP 未入力）', si !== null ? (si > 1.0 ? '[Critical]' : si > 0.8 ? '[Warning]' : '正常') : '');
   h += row('BUN/Cre 比', bunCre !== null ? bunCre : '（BUN・Cre 未入力）', bunCre !== null ? (bunCre > 20 ? '腎前性脱水を示唆' : bunCre < 10 ? '低栄養・過剰輸液の可能性' : '正常') : '');
@@ -1132,28 +1207,56 @@ function goNext() {
       h += row('減量後維持量', adjMnt.toLocaleString() + ' mL/日 (' + Math.round(adjMnt/24) + ' mL/時)', `× ${Math.round(volFactor*100)}%`);
     }
     h += '</table>';
-    h += `<div class="p2-rec">思考支援：「欠乏補正量」と「維持輸液量」を分けて考え、合計量と速度を確認します。<br>Day 2以降は参考試算です。必ず再評価結果を携えて医師と協議し、指示を確認してから実施してください。${volFactor < 1 ? '<br>溢水・心不全・腎障害リスクにより減量を適用しています。投与中は呼吸状態・浮腫・尿量を頻回に観察してください。' : ''}</div>`;
+    h += `<div class="p2-rec">思考支援：「欠乏補正量」と「維持輸液量」を分けて考え、合計量と速度を確認します。<br>Day 2〜5は仮の値です。必ず再評価結果を携えて医師と協議し、指示を確認してから実施してください。${volFactor < 1 ? '<br>溢水・心不全・腎障害リスクにより減量を適用しています。投与中は呼吸状態・浮腫・尿量を頻回に観察してください。' : ''}</div>`;
 
     if (proto.length > 0) {
       h += `<div class="proto-grid">`;
       proto.forEach(r => {
-        h += `<div class="proto-card"><div class="proto-head">${r.day}</div><div class="proto-body">`;
+        h += `<div class="proto-card"><div class="proto-head">${r.day}${r.cur ? '（当日）' : '（仮）'}</div><div class="proto-body">`;
         h += `<div class="proto-m deficit"><div class="proto-m-lbl">欠乏補正</div><div class="proto-m-val">${r.def.toLocaleString()} mL</div></div>`;
         h += `<div class="proto-m maintenance"><div class="proto-m-lbl">維持輸液</div><div class="proto-m-val">${r.mnt.toLocaleString()} mL</div></div>`;
-        h += `<div class="proto-m total"><div class="proto-m-lbl">合計</div><div class="proto-m-val">${r.total.toLocaleString()} mL</div></div>`;
+        if (r.cur && prevAny) {
+          h += `<div class="proto-m maintenance"><div class="proto-m-lbl">前日の排液・下痢・嘔吐（加算）</div><div class="proto-m-val">+${r.plus.toLocaleString()} mL</div></div>`;
+          h += `<div class="proto-m maintenance"><div class="proto-m-lbl">前日の飲水・経管栄養（減算）</div><div class="proto-m-val">−${r.minus.toLocaleString()} mL</div></div>`;
+        }
+        h += `<div class="proto-m maintenance"><div class="proto-m-lbl">調整前の合計</div><div class="proto-m-val">${r.raw.toLocaleString()} mL</div></div>`;
+        h += `<div class="proto-m total"><div class="proto-m-lbl">合計（100 mL単位に調整）</div><div class="proto-m-val">${r.total.toLocaleString()} mL</div></div>`;
         h += `<div class="proto-m rate"><div class="proto-m-lbl">投与速度</div><div class="proto-m-val">${r.rate} mL/時</div></div>`;
         h += `<div class="proto-note">${r.note}</div></div></div>`;
       });
       h += '</div>';
-      // 3日合計
-      const tot3def = proto.reduce((a,r)=>a+r.def,0), tot3mnt = proto.reduce((a,r)=>a+r.mnt,0);
-      h += `<table class="p2-tbl" style="margin-top:10px;">`;
-      h += row('3日合計 欠乏補正', tot3def.toLocaleString() + ' mL', '');
-      h += row('3日合計 維持輸液', tot3mnt.toLocaleString() + ' mL', '');
-      h += row('3日合計', (tot3def+tot3mnt).toLocaleString() + ' mL', '再評価で前倒し・減量を許容');
-      h += '</table>';
+      h += `<div class="p2-warn-line" style="margin-top:8px;">欠乏補正の配分（最初の欠乏量に対して）：1日目 約33%・2日目 約33%・3日目 約34%、4〜5日目 0%（維持量だけ）。今は補正の${corrDay}日目として計算しています。1日の合計だけを、規格（200・500・1000 mL）の組み合わせで作れる100 mL単位に四捨五入しています（維持量と欠乏補正は調整せず、内訳のまま表示）。高張性でNaの目標を超える場合だけ切り下げます。欠乏量は毎日その日の体重と採血から計算し直し、補正の何日目かを入力してください。</div>`;
+      if (provCapped) {
+        h += `<div class="p2-stop" style="margin-top:8px;">仮の枠の欠乏補正も、Naの目標以内になる量までに減らしています。欠乏は3日で終わらない可能性があります。毎日、その日の値で再計算してください。</div>`;
+      }
+      if (defReduced) {
+        h += `<div class="p2-stop" style="margin-top:8px;">Naの下がり方を目標以内にするため、欠乏補正を${defToday.toLocaleString()} mLに減らしました（配分では${defAlloc.toLocaleString()} mL）。</div>`;
+      }
+      if (corrDay === 1) {
+        h += `<div class="p2-warn-line" style="margin-top:8px;">最初の欠乏量：${avgDefMl.toLocaleString()} mL（2日目・3日目の入力に使います）</div>`;
+      }
+      if (defNoFirst) {
+        h += `<div class="p2-warn-line" style="margin-top:8px;">最初の欠乏量が未入力のため、1日目と同じ配分で計算しています</div>`;
+      }
+      if (defCapApplied) {
+        h += `<div class="p2-stop" style="margin-top:8px;">欠乏量が計画どおり減っていません。医師に確認</div>`;
+      }
+      if (corrDay >= 4) {
+        h += `<div class="p2-stop" style="margin-top:8px;">欠乏が残っています。医師に確認</div>`;
+      }
     } else if (mnt.adjusted !== null) {
       h += `<div class="p2-rec">欠乏量データが不足のため、維持輸液（${mnt.adjusted.toLocaleString()} mL/日 / ${mnt.hourly} mL/時）のみ算出可能です。</div>`;
+    }
+    if (day1Small) {
+      h += `<div class="p2-stop" style="margin-top:10px;">当日の合計は調整前で${day1RawPos.toLocaleString()} mLと50 mL未満のため、0 mLにしました。輸液の要否を医師に確認</div>`;
+    }
+    if (day1Zero) {
+      h += `<div class="p2-stop" style="margin-top:10px;">当日の輸液量は0 mLです（前日の飲水・経管栄養が、維持量と欠乏補正と前日の排液等の合計以上）。輸液の要否を医師に確認</div>`;
+    }
+    h += `<div class="p2-warn-line" style="margin-top:8px;">${prevAny ? '前日の出入りを反映しています。' : '前日の出入りは未反映'}　出血・穿刺排液（胸水・腹水）は含めていません。医師に確認</div>`;
+    if (mealPct !== null) {
+      h += `<div class="p2-warn-line" style="margin-top:4px;">食事${mealPct}割。食事に含まれる水分は輸液量に反映していません</div>`;
+      if (mealPct >= 5) h += `<div class="p2-stop" style="margin-top:4px;">経口摂取が増えています。輸液の減量を医師に確認</div>`;
     }
 
     h += `<div class="p2-stop">中止基準：呼吸困難・ラ音出現（肺水腫） / 尿量 &lt; 0.5 mL/kg/h / Na変化 &gt; 0.5 mEq/L/h</div>`;
@@ -1175,16 +1278,23 @@ function goNext() {
     h += '</div></div>';
   }
 
-  // Na補正速度安全計算
-  if (naVal !== null) {
-    h += `<div class="band"><div class="band-title orange">Na補正速度の安全計算（Adrogue-Madias 式）</div><div class="band-body">`;
+  // Na補正の試算（高張性のみ：5%ブドウ糖液が候補になるため）
+  if (naVal !== null && dtype === 'hyper') {
+    h += `<div class="band"><div class="band-title orange">Na補正の試算（Adrogue-Madias 式）</div><div class="band-body">`;
     h += `<table class="p2-tbl">`;
     h += row('TBW', tbwL !== null ? tbwL + ' L' : '—', '体重 ' + (curWeight||'—') + ' kg × TBW係数 ' + tbwCoef);
-    h += row('計算基準製剤', '5%ブドウ糖液（Na 0 / K 0 mEq/L）', '他製剤ではNa変化速度が異なります');
+    h += row('計算基準製剤', '5%ブドウ糖液（Na 0 / K 0 mEq/L）', '欠乏補正の分を5%ブドウ糖液で入れた場合の試算です。維持量は日々の喪失の補充とみなし、含めていません。維持量が実際の喪失と合っている場合の試算です');
     h += row('1L 投与時のNa変化量', adroguePerL !== null ? adroguePerL + ' mEq/L' : '—', 'Adrogue-Madias 式');
-    h += row('1時間あたり', naChgH !== null ? naChgH + ' mEq/L/h' : '—', `<span style="${naSafetyClass}">${naSafetyLabel}</span>（5%ブドウ糖液1L/24時間を仮定）`);
+    h += row('計画の目標', naTarget24 + ' mEq/L/日', chronic ? '慢性または不明' : '急性（体重変化2日未満）');
+    h += row('欠乏補正の当日分（配分）', avgDefMl !== null ? defAlloc.toLocaleString() + ' mL' : '—', '補正の' + corrDay + '日目。減量係数適用後');
+    h += row('目標に収まる量', defLimitMl !== null ? defLimitMl.toLocaleString() + ' mL' : '—', '目標 ÷ 1Lあたりの変化量');
+    h += row('欠乏補正の当日分（採用）', avgDefMl !== null ? defToday.toLocaleString() + ' mL' : '—', defReduced ? `Naの下がり方を目標以内にするため、欠乏補正を${defToday.toLocaleString()} mLに減らしました` : '配分どおり');
+    if (avgDefMl !== null && defEff1 !== defToday) h += row('調整後の合計に含まれる欠乏補正', defEff1.toLocaleString() + ' mL', '合計を100 mL単位に調整した分を含めて、Naの試算を行います');
+    h += row('24時間のNa変化量（試算）', na24Round !== null ? na24Round + ' mEq/L' : '—', na24Round !== null ? '目標以内の試算です。実測Naで確認してください' : (naZero ? '輸液量が0のため、試算は出しません' : '欠乏量が算出できないため試算しません'));
+    h += row('1時間あたり', na24 !== null ? (Math.round(Math.abs(na24) / 24 * 100) / 100) + ' mEq/L/h' : '—', '上の試算を24で割った値');
     h += '</table>';
-    h += `<div class="p2-warn-line">慢性高Na血症・慢性低Na血症では 0.5 mEq/L/h 以下が最重要です（ODS・脳障害予防）。</div>`;
+    h += `<div class="p2-warn-line">実測のNaが24時間で${naReport24} mEq/L を超えて下がったら、医師へ報告してください。</div>`;
+    h += `<div class="p2-warn-line" style="margin-top:4px;">慢性高Na血症・慢性低Na血症では 0.5 mEq/L/h 以下が最重要です（ODS・脳障害予防）。</div>`;
     h += `<div class="p2-warn-line" style="margin-top:4px;">※ 急性/慢性の判定は体重変化日数（${weightDays !== null ? weightDays + '日' : '不明'}）で代用しています。正確にはNa異常の持続時間（48時間基準）で判断します。病歴聴取と再検査で必ず補完してください。</div>`;
     h += '</div></div>';
   }
@@ -1645,7 +1755,7 @@ function loadSampleCase(idx) {
   const _now2 = new Date();
   const _usu = new Date(_now2); _usu.setDate(_usu.getDate() - (c.daysAgo || 0));
   document.getElementById('usuWeight').value = c.usuW;
-  document.getElementById('usuWeightDate').value = _fmtD(_usu);
+  document.getElementById('usuWeightDate').value = c.usuW ? _fmtD(_usu) : ''; // 通常時体重なしの症例は測定日も空欄
   document.getElementById('curWeight').value = c.curW;
   document.getElementById('curWeightDate').value = _fmtD(_now2);
 

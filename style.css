@@ -247,3 +247,15 @@ select.f-ok    { border-color: var(--success); }
 
 
 
+
+.fnote { font-size: 12px; color: var(--info); margin-top: 2px; }
+
+/* V1.15: keep each day together when printing the infusion plan. */
+@media print {
+  .proto-grid { display: block; }
+  .proto-card {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    margin-bottom: 10px;
+  }
+}

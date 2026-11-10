@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>特定行為（水分管理）判断支援ツール</title>
-  <link rel="stylesheet" href="style.css?v=20261106-fix3">
+  <link rel="stylesheet" href="style.css?v=20261110-v115">
 </head>
 <body>
 
@@ -464,6 +464,83 @@
     </div>
   </div>
 
+  <!-- ===== SECTION 6: 前日の出入り（任意） ===== -->
+  <div class="card" id="card6">
+    <div class="card-header" onclick="toggleCard('card6')">
+      <span class="c-icon">S6</span>
+      <h2>セクション 6 &#x2014; 前日の出入り <span class="range-hint">※すべて任意</span></h2>
+      <span class="c-status waiting" id="s6-status">任意</span>
+      <span class="c-toggle" id="c-toggle6">&#9660;</span>
+    </div>
+    <div class="card-body" id="card6-body">
+      <div class="gridAuto">
+        <div class="form-group">
+          <label class="fl" for="corrDay">補正の何日目か</label>
+          <select id="corrDay" onchange="validate()">
+            <option value="1">1日目</option>
+            <option value="2">2日目</option>
+            <option value="3">3日目</option>
+            <option value="4">4日目</option>
+            <option value="5">5日目</option>
+          </select>
+          <div class="fnote" id="corrDay-note">欠乏補正は3日で終える計画です</div>
+          <div class="fmsg" id="corrDay-msg"></div>
+        </div>
+        <div class="form-group">
+          <label class="fl" for="firstDef">最初の欠乏量 <span class="unit">mL</span> <span class="range-hint">※2日目・3日目だけ</span></label>
+          <input type="number" id="firstDef" min="1" max="50000" placeholder="例: 3000" oninput="validate()">
+          <div class="fnote" id="firstDef-note">1日目の結果に出た「最初の欠乏量」を入れます。空欄のときは、その日の欠乏量の1/3で計算します</div>
+          <div class="fmsg" id="firstDef-msg"></div>
+        </div>
+        <div class="form-group">
+          <label class="fl" for="prevDrink">飲水量 <span class="unit">mL</span></label>
+          <input type="number" id="prevDrink" min="0" max="20000" placeholder="例: 400" oninput="validate()">
+          <div class="fmsg" id="prevDrink-msg"></div>
+        </div>
+        <div class="form-group">
+          <label class="fl" for="prevTube">経管栄養の量 <span class="unit">mL</span></label>
+          <input type="number" id="prevTube" min="0" max="20000" placeholder="例: 1200" oninput="validate()">
+          <div class="fnote" id="prevTube-note">胃瘻・胃管から入れた栄養剤と白湯を含めます</div>
+          <div class="fmsg" id="prevTube-msg"></div>
+        </div>
+        <div class="form-group">
+          <label class="fl" for="prevDrain">ドレーン・胃管の排液 <span class="unit">mL</span></label>
+          <input type="number" id="prevDrain" min="0" max="20000" placeholder="例: 300" oninput="validate()">
+          <div class="fnote" id="prevDrain-note">胃管・胃瘻から出た排液（減圧）を含めます</div>
+          <div class="fmsg" id="prevDrain-msg"></div>
+        </div>
+        <div class="form-group">
+          <label class="fl" for="prevStoma">ストーマ・瘻孔の排液 <span class="unit">mL</span></label>
+          <input type="number" id="prevStoma" min="0" max="20000" placeholder="例: 500" oninput="validate()">
+          <div class="fnote" id="prevStoma-note">ストーマ袋・瘻孔から出た量を入力します</div>
+          <div class="fmsg" id="prevStoma-msg"></div>
+        </div>
+        <div class="form-group">
+          <label class="fl" for="prevDiarrhea">下痢の量 <span class="unit">mL</span></label>
+          <input type="number" id="prevDiarrhea" min="0" max="20000" placeholder="例: 200" oninput="validate()">
+          <div class="fmsg" id="prevDiarrhea-msg"></div>
+        </div>
+        <div class="form-group">
+          <label class="fl" for="prevVomit">嘔吐の量 <span class="unit">mL</span></label>
+          <input type="number" id="prevVomit" min="0" max="20000" placeholder="例: 100" oninput="validate()">
+          <div class="fmsg" id="prevVomit-msg"></div>
+        </div>
+        <div class="form-group">
+          <label class="fl" for="prevOther">その他の排液 <span class="unit">mL</span></label>
+          <input type="number" id="prevOther" min="0" max="20000" placeholder="例: 150" oninput="validate()">
+          <div class="fnote" id="prevOther-note">陰圧閉鎖療法の排液など</div>
+          <div class="fmsg" id="prevOther-msg"></div>
+        </div>
+        <div class="form-group">
+          <label class="fl" for="mealPct">食事の摂取割合 <span class="unit">割</span> <span class="range-hint">(0〜10)</span></label>
+          <input type="number" id="mealPct" min="0" max="10" step="1" placeholder="例: 5" oninput="validate()">
+          <div class="fmsg" id="mealPct-msg"></div>
+        </div>
+      </div>
+      <div class="fnote" style="margin-top:8px;">尿量は入れません（上の尿量欄を使用）。出血・穿刺排液（胸水・腹水）は含めていません。医師に確認してください。</div>
+    </div>
+  </div>
+
   <!-- ===== PHASE 2 RESULTS ===== -->
   <div class="card" id="card-p2" style="display:none;">
     <div class="card-header" style="background:linear-gradient(135deg,#1565C0,#0D47A1);border-bottom:2px solid #0D47A1;cursor:default;">
@@ -488,7 +565,7 @@
 
 </div><!-- /main -->
 
-<script src="main.js?v=20261106-fix3" defer></script>
+<script src="main.js?v=20261110-v115" defer></script>
 </body>
 </html>
 
