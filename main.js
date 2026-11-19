@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 //  STATE
 // ============================================================
 let consciousnessMode = 'jcs'; // 'jcs' | 'gcs'
@@ -293,6 +293,26 @@ function invalidateP2IfChanged() {
   if (body) body.innerHTML = '<div class="p2-warn-line">入力が変わりました。「第2段階へ進む」で再計算してください。前回の計算結果は無効のため表示していません。</div>';
 }
 
+function dilutionReason(na, edema, bnp) {
+  if (na === null || na >= 135) return '';
+  const findings = [];
+  if (edema) findings.push('浮腫あり');
+  if (bnp !== null && bnp > 200) findings.push('BNP ' + bnp + ' pg/mL');
+  if (!findings.length) return '';
+  return '血清Na ' + na + ' mEq/L、' + findings.join('、') + '。希釈性低Na血症の疑いがあります。補液の要否・量を医師に確認してください。';
+}
+
+function planHoldReasons(naVal, hasEdema, bnpVal) {
+  const holdReasons = [];
+  if (naVal === null) holdReasons.push('血清Naを入力すると、輸液計画を表示します');
+  const dilution = dilutionReason(naVal, hasEdema, bnpVal);
+  if (dilution) holdReasons.push(dilution);
+  if (naVal !== null && naVal < 125) {
+    holdReasons.push('血清Naが125 mEq/L未満のため、投与案を保留します。急速な補正による浸透圧性脱髄症候群（ODS）に注意し、医師に確認してください。');
+  }
+  return holdReasons;
+}
+
 function validate() {
   alerts = { critical: [], warning: [], info: [] };
   if (document.querySelector('.custom-select')) syncCustomSelects();
@@ -303,7 +323,8 @@ function validate() {
   let s1Errors = 0, s1Empty = 0;
 
   // Age（0歳は対象外：1〜120歳）
-  const ageR = checkRange('age', 1, 120, '年齢');
+  const ageR = checkRange('age', 18, 120, '年齢');
+  if (v('age') !== null && v('age') < 18) setField('age', 'error', '18歳未満は対象外です');
   if (!ageR.ok) { if (ageR.empty) s1Empty++; else s1Errors++; }
 
   // Sex
@@ -368,7 +389,7 @@ function validate() {
     const contradEl = document.getElementById('exam-contradiction');
     if (diff < 0 && (document.getElementById('dryMouth').checked || document.getElementById('turgurDown').checked)) {
       if (contradEl) contradEl.innerHTML = '<div class="alert-box warning"><div class="alert-body"><div class="alert-title warning">データの矛盾</div><div class="alert-msg">体重が増加しているにもかかわらず脱水症状（口腔乾燥・ツルゴール低下）が認められます。希釈性低Na血症や心不全による体液過剰の可能性を検討してください。</div></div></div>';
-      alerts.warning.push({ title: 'データの矛盾: 体重増加＋脱水症状', msg: '体重増加しているにもかかわらず脱水所見あり。希釈性低Na血症・溢水を考慮してください。' });
+      alerts.warning.push({ title: 'データの矛盾: 体重増加＋脱水症状', msg: '体重増加しているにもかかわらず脱水所見あり。体液量と血清Naを再評価してください。' });
     } else {
       if (contradEl) contradEl.innerHTML = '';
     }
@@ -464,7 +485,7 @@ function validate() {
   if (!tempR.ok) { if (tempR.empty) s2Empty++; else s2Errors++; }
   if (tempR.ok && tempR.val > 37.0) {
     // 発熱補正は37℃超で連続適用されるため、通知も37℃超で常に表示（補正と通知の整合）
-    alerts.info.push({ title: '発熱', msg: `体温 ${tempR.val}℃。維持輸液量に発熱補正が必要です（37℃超1℃ごと +15%）。` });
+    alerts.info.push({ title: '発熱', msg: `体温 ${tempR.val}℃。維持輸液量に発熱補正が必要です（37℃超1℃ごと +15%）。`, heldMsg: `体温 ${tempR.val}℃（発熱）。` });
   }
 
   // Urine
@@ -478,10 +499,10 @@ function validate() {
     } else if (urinePerHour !== null && curWeightVal) {
       const uPerKg = urinePerHour / curWeightVal;
       if (uPerKg < 0.5) {
-        alerts.warning.push({ title: '重度乏尿', msg: `尿量 ${uPerKg.toFixed(2)}mL/kg/h < 0.5mL/kg/h。腎前性・腎性・腎後性の鑑別が必要です。試験的輸液負荷後の尿量評価を検討してください。` });
+        alerts.warning.push({ title: '重度乏尿', msg: `尿量 ${uPerKg.toFixed(2)}mL/kg/h < 0.5mL/kg/h。腎前性・腎性・腎後性の鑑別が必要です。試験的輸液負荷後の尿量評価を検討してください。`, heldMsg: `尿量 ${uPerKg.toFixed(2)} mL/kg/h。腎前性・腎性・腎後性の鑑別が必要です。医師に報告してください。` });
         setField(urineMode === 'h' ? 'urineH' : 'urineD', 'warn', '');
       } else if (uPerKg < 1.0) {
-        alerts.warning.push({ title: '乏尿', msg: `尿量 ${uPerKg.toFixed(2)}mL/kg/h（0.5〜1.0mL/kg/h）。腎前性・腎性・腎後性の鑑別を検討してください。試験的輸液負荷後の尿量評価を行ってください。` });
+        alerts.warning.push({ title: '乏尿', msg: `尿量 ${uPerKg.toFixed(2)}mL/kg/h（0.5〜1.0mL/kg/h）。腎前性・腎性・腎後性の鑑別を検討してください。試験的輸液負荷後の尿量評価を行ってください。`, heldMsg: `尿量 ${uPerKg.toFixed(2)} mL/kg/h。腎前性・腎性・腎後性の鑑別が必要です。医師に報告してください。` });
         setField(urineMode === 'h' ? 'urineH' : 'urineD', 'warn', '');
       } else {
         setField(urineMode === 'h' ? 'urineH' : 'urineD', 'ok', '');
@@ -508,7 +529,7 @@ function validate() {
   const bnpVal = v('bnp');
   // edema + rales → possible heart failure overflow (checked in sec 4 with BNP)
   if (cpAngle && edema && rales) {
-    alerts.warning.push({ title: '溢水/うっ血の複合所見', msg: '浮腫＋ラ音＋CP angle鈍化。画像上もうっ血を示唆する所見が揃っています。補液量の制限を強く検討してください。' });
+    alerts.warning.push({ title: '溢水/うっ血の複合所見', msg: '浮腫＋ラ音＋CP angle鈍化。画像上もうっ血を示唆する所見が揃っています。補液量の制限を強く検討してください。', heldMsg: `浮腫＋ラ音＋CP angle鈍化。うっ血を示唆する所見です。医師に報告してください。` });
   } else if (cpAngle) {
     alerts.info.push({ title: 'CP angle鈍化（うっ血補助所見）', msg: '胸水/うっ血の可能性。単独では補液制限の根拠になりませんが、他の溢水所見と合わせて評価してください。' });
   }
@@ -525,8 +546,9 @@ function validate() {
     else if (naR.val < 135) {
       const hasEdema = document.getElementById('edema').checked;
       const bnp = v('bnp');
-      if (hasEdema || (bnp !== null && bnp > 200)) {
-        alerts.warning.push({ title: '希釈性低ナトリウム血症の疑い', msg: `Na ${naR.val} mEq/L < 135 かつ 浮腫あり/BNP高値。水制限を優先。安易な輸液は禁忌。` });
+      const reason = dilutionReason(naR.val, hasEdema, bnp);
+      if (reason) {
+        alerts.warning.push({ title: '希釈性低ナトリウム血症の疑い', msg: reason });
         setField('na', 'warn', '');
       } else {
         alerts.info.push({ title: '軽度低ナトリウム血症', msg: `Na ${naR.val} mEq/L（正常: 138〜145）。軽度低Naに注意。` });
@@ -543,7 +565,7 @@ function validate() {
     if (kR.val > 6.0) alerts.critical.push({ title: '重度高カリウム血症', msg: `K ${kR.val} mEq/L > 6.0。緊急対応が必要です。K含有輸液は絶対禁忌。` });
     else if (kR.val < 2.5) alerts.critical.push({ title: '重度低カリウム血症', msg: `K ${kR.val} mEq/L < 2.5。不整脈リスクがあります。緊急補正を検討してください。` });
     else if (kR.val > 5.5) alerts.warning.push({ title: '高カリウム血症', msg: `K ${kR.val} mEq/L > 5.5。K含有輸液使用不可。2〜4時間ごとの再検査を行ってください。` });
-    else if (kR.val < 3.5) alerts.info.push({ title: '低カリウム血症', msg: `K ${kR.val} mEq/L < 3.5。軽度低K。経過観察と補正を検討してください。` });
+    else if (kR.val < 3.5) alerts.info.push({ title: '低カリウム血症', msg: `K ${kR.val} mEq/L < 3.5。軽度低K。経過観察と補正を検討してください。`, heldMsg: `K ${kR.val} mEq/L。軽度低K。医師に確認してください。` });
   }
 
   // Cl
@@ -573,7 +595,7 @@ function validate() {
     } else if (egfrVal < 30) {
       eState = 'calc-warn';
       eMsg = '高度低下';
-      alerts.warning.push({ title: '高度腎機能障害 (G4)', msg: `eGFR ${egfrVal} mL/分/1.73m²。K含有輸液は慎重に。投与量を通常の75%に制限し、尿量・K・呼吸状態を再評価してください。` });
+      alerts.warning.push({ title: '高度腎機能障害 (G4)', msg: `eGFR ${egfrVal} mL/分/1.73m²。K含有輸液は慎重に。投与量を通常の75%に制限し、尿量・K・呼吸状態を再評価してください。`, heldMsg: `eGFR ${egfrVal} mL/分/1.73m²。K含有輸液は慎重に。尿量・K・呼吸状態を再評価してください。` });
     } else if (egfrVal < 45) {
       eState = 'calc-warn';
       eMsg = '中等度〜高度低下';
@@ -610,7 +632,7 @@ function validate() {
   if (!gluR.ok) s4Errors++;
   if (gluR.ok && gluR.val !== null) {
     if (gluR.val > 500) alerts.critical.push({ title: '高血糖緊急症', msg: `Glu ${gluR.val} mg/dL > 500。DKA/HHSの可能性。専門的治療が必要です。` });
-    else if (gluR.val > 250) alerts.warning.push({ title: '中等度高血糖', msg: `Glu ${gluR.val} mg/dL。インスリン併用を検討。ブドウ糖液は避けてください。` });
+    else if (gluR.val > 250) alerts.warning.push({ title: '中等度高血糖', msg: `Glu ${gluR.val} mg/dL。インスリン併用を検討。ブドウ糖液は避けてください。`, heldMsg: `Glu ${gluR.val} mg/dL。ブドウ糖を含む製剤は避けてください。医師に確認してください。` });
     else if (gluR.val < 70) alerts.warning.push({ title: '低血糖', msg: `Glu ${gluR.val} mg/dL < 70。低血糖への対応が必要です。` });
   }
 
@@ -648,9 +670,9 @@ function validate() {
   if (!bnpR.ok) s4Errors++;
   if (bnpR.ok && bnpR.val !== null) {
     if (bnpR.val > 500 || (edema && rales)) {
-      alerts.warning.push({ title: '重症心不全または溢水', msg: `BNP ${bnpR.val} pg/mL > 500（または浮腫＋ラ音）。輸液量を通常の50%に制限し、呼吸状態・浮腫・尿量を注意深く観察してください。（※BNP閾値は心不全の診断閾値ではなく、本ツールで慎重投与判断のために採用した安全上の参考閾値です）` });
+      alerts.warning.push({ title: '重症心不全または溢水', msg: `BNP ${bnpR.val} pg/mL > 500（または浮腫＋ラ音）。輸液量を通常の50%に制限し、呼吸状態・浮腫・尿量を注意深く観察してください。（※BNP閾値は心不全の診断閾値ではなく、本ツールで慎重投与判断のために採用した安全上の参考閾値です）`, heldMsg: `BNP ${bnpR.val} pg/mL。${edema && rales ? '浮腫＋ラ音。' : ''}呼吸状態・浮腫・尿量を観察し、医師に報告してください。` });
     } else if (bnpR.val > 200) {
-      alerts.warning.push({ title: '心不全リスクまたは腎機能障害', msg: `BNP ${bnpR.val} pg/mL > 200。輸液量を通常の75%に制限し、4〜6時間ごとに再評価してください。（※BNP閾値は心不全の診断閾値ではなく、本ツールで採用した安全上の参考閾値です）` });
+      alerts.warning.push({ title: '心不全リスクまたは腎機能障害', msg: `BNP ${bnpR.val} pg/mL > 200。輸液量を通常の75%に制限し、4〜6時間ごとに再評価してください。（※BNP閾値は心不全の診断閾値ではなく、本ツールで採用した安全上の参考閾値です）`, heldMsg: `BNP ${bnpR.val} pg/mL。4〜6時間ごとに再評価し、医師に確認してください。` });
     } else if (bnpR.val > 100) {
       alerts.info.push({ title: 'BNP軽度上昇', msg: `BNP ${bnpR.val} pg/mL。心不全の可能性を念頭に輸液管理を慎重に。` });
     }
@@ -695,6 +717,13 @@ function validate() {
   // ============================================================
   //  UPDATE ALERT DISPLAY
   // ============================================================
+  const restricted = alerts.critical.length > 0 || planHoldReasons(v('na'), edema, bnpR.val).length > 0;
+  if (restricted) {
+    for (const alert of [...alerts.warning, ...alerts.info]) {
+      if (alert.heldMsg) alert.msg = alert.heldMsg;
+    }
+    if (edema && rales && bnpR.val === null) alerts.warning.push({ title: '浮腫＋ラ音', msg: '呼吸状態・浮腫・尿量を観察し、医師に報告してください。' });
+  }
   renderAlerts();
 
   // Update global status
@@ -845,7 +874,6 @@ function resetAll() {
 // ============================================================
 function getTBWCoef(age, sex) {
   if (!age) return sex === 'female' ? 0.5 : 0.6;
-  if (age < 15) return 0.65;
   if (age >= 65) return sex === 'female' ? 0.45 : 0.5;
   return sex === 'female' ? 0.5 : 0.6;
 }
@@ -869,12 +897,9 @@ function getWeightLossType(days, delta, stress) {
   return { type:'慢性（組織減少主体）', methodOk:false, adjustedKg:null, tissueKg:null, tissueRate:getCatabolicRate(stress) };
 }
 function getMaintenance2(wt, age, temp) {
-  if (!wt || !age) return { base:null, adjusted:null, hourly:null, feverF:1, mode:'未判定' };
+  if (!wt || !age || age < 18 || age > 120) return { base:null, adjusted:null, hourly:null, feverF:1, mode:'未判定' };
   let base, mode;
-  if (age < 15) {
-    base = (Math.min(wt,10)*100 + Math.max(Math.min(wt-10,10),0)*50 + Math.max(wt-20,0)*20);
-    mode = '小児 Holliday-Segar 法';
-  } else if (age >= 65) {
+  if (age >= 65) {
     base = wt * 22.5; mode = '高齢者 22.5 mL/kg/日';
   } else {
     base = wt * 27.5; mode = '成人 27.5 mL/kg/日';
@@ -934,6 +959,8 @@ function goNext() {
   const hasRales   = document.getElementById('rales').checked;
   const hasJvd     = document.getElementById('jvd').checked;
   const hasCpAngle = document.getElementById('cpAngle').value === 'dull';
+  const holdReasons = planHoldReasons(naVal, hasEdema, bnpVal);
+  const showPlan = !alerts.critical.length && !holdReasons.length;
   const cwd = vd('curWeightDate'), uwd = vd('usuWeightDate');
   const weightDays = (cwd && uwd) ? Math.round(Math.abs(cwd - uwd) / 86400000) : null;
   const deltaW = (usualWeight && curWeight) ? usualWeight - curWeight : null;
@@ -956,9 +983,9 @@ function goNext() {
     dlabel = '高張性脱水（水欠乏型）　Na ' + naVal + ' mEq/L';
     dbasis = '体内水分の相対的不足。自由水（低張液）で補充。Na 補正速度 ≤ 0.5 mEq/L/h、最大 10〜12 mEq/day を超えないこと。';
   } else if (naVal < 135) {
-    dtype = 'hypo'; dcolor = 'hypo'; pathology = '細胞外液減少＋細胞内浮腫';
-    dlabel = '低張性脱水（Na欠乏型）　Na ' + naVal + ' mEq/L';
-    dbasis = 'Na 欠乏が主体。等張〜高張 NaCl 液で補充。慢性例：補正速度 ≤ 8〜10 mEq/day（ODS 予防）。';
+    dtype = 'hypo'; dcolor = 'hypo'; pathology = '原因の評価が必要';
+    dlabel = '低Na血症　Na ' + naVal + ' mEq/L';
+    dbasis = 'Na値と循環所見、検査値を合わせて評価してください。';
   } else {
     dtype = 'iso'; dcolor = 'iso'; pathology = '細胞外液減少';
     dlabel = '等張性脱水　Na ' + naVal + ' mEq/L';
@@ -1062,11 +1089,12 @@ function goNext() {
   const naReport24 = chronic ? 10 : 12;  // 医師へ報告する線（mEq/L/24時間）
   // 2日目・3日目の欠乏補正の当日分は、「その日の欠乏量×割合」と「最初の欠乏量の1/3」の少ないほう。減量係数はその後にかける。
   // 最初の欠乏量が未入力のときは、その日の欠乏量の1/3（1日目と同じ配分）にする。
-  const capBase = avgDefMl !== null ? ((corrDay >= 2 && firstDef !== null) ? firstDef / 3 : avgDefMl / 3) : null;
-  const defShareBase = avgDefMl !== null ? avgDefMl * shareToday : 0;
-  const defCapApplied = avgDefMl !== null && corrDay >= 2 && corrDay <= 3 && firstDef !== null && defShareBase > capBase + 0.5; // 欠乏量が計画どおり減っていない
+  const capBasis = corrDay >= 2 && firstDef !== null ? firstDef : avgDefMl;
+  const defCap = capBasis === null ? null : Math.floor(capBasis * Math.round(volFactor * 100) / 300);
+  const defShare = Math.round((avgDefMl ?? 0) * shareToday * volFactor);
+  const defAlloc = corrDay >= 2 && defCap !== null ? Math.min(defShare, defCap) : defShare;
+  const defCapApplied = corrDay >= 2 && corrDay <= 3 && firstDef !== null && defAlloc < defShare;
   const defNoFirst = avgDefMl !== null && corrDay >= 2 && corrDay <= 3 && firstDef === null;                                     // 最初の欠乏量が未入力
-  const defAlloc = avgDefMl !== null ? Math.round((corrDay >= 2 ? Math.min(defShareBase, capBase) : defShareBase) * volFactor) : 0; // 配分で出した量（減量係数後）
   const naPerLAbs = adrogueRaw !== null ? Math.abs(adrogueRaw) : null;
   const defLimitMl = (dtype === 'hyper' && naPerLAbs) ? Math.floor(naTarget24 / naPerLAbs * 1000) : null; // 目標に収まる量
   const defReduced = defLimitMl !== null && defLimitMl < defAlloc; // Naの目標で減らしたか
@@ -1096,7 +1124,7 @@ function goNext() {
     const dd = Math.round(d0 / 3 * volFactor);
     const v0 = n === 2 ? dd : Math.round(d0 * volFactor) - 2 * dd;
     // 高張性では、当日と同じNaの目標を超えない量までにする（超える分は翌日以降の再計算に持ち越す）
-    const v1 = capBase !== null ? Math.min(v0, Math.round(capBase * volFactor)) : v0; // 仮の枠にも同じ上限（最初の欠乏量の1/3）
+    const v1 = defCap !== null ? Math.min(v0, defCap) : v0; // 仮の枠にも同じ上限（最初の欠乏量の1/3）
     return (defLimitMl !== null && v1 > defLimitMl) ? defLimitMl : v1;
   };
   const provCapped = defLimitMl !== null && [2, 3].some(n => n > corrDay && d0 !== null && Math.round(d0 / 3 * volFactor) > defLimitMl);
@@ -1116,7 +1144,8 @@ function goNext() {
 
   // --- Na補正の試算（V1.15 v2：高張性のみ。欠乏補正の当日分だけを5%ブドウ糖液で入れた場合。維持量は含めない） ---
   const naZero = day1Total !== null && day1Total === 0; // 輸液量が0のときは試算を出さない
-  const na24 = (adrogueRaw !== null && avgDefMl !== null && !naZero) ? adrogueRaw * Math.min(defEff1, day1Total) / 1000 : null;
+  const noDeficitCorrection = corrDay >= 4 && defToday === 0;
+  const na24 = (adrogueRaw !== null && avgDefMl !== null && !naZero && !noDeficitCorrection) ? adrogueRaw * Math.min(defEff1, day1Total) / 1000 : null;
   const na24Round = na24 !== null ? Math.round(na24 * 10) / 10 : null;
 
   // --- HTML構築 ---
@@ -1128,6 +1157,8 @@ function goNext() {
   const statusCls = alerts.critical.length > 0 ? 'critical' : (alerts.warning.length > 0 ? 'warning' : 'ok');
   const statusMsg = alerts.critical.length > 0
     ? 'Critical ' + alerts.critical.length + ' 件。輸液計画提示を最小化します。まず医師へ報告してください。'
+    : holdReasons.length > 0
+    ? '輸液計画を保留しています。理由を確認してください。'
     : alerts.warning.length > 0
     ? 'Warning ' + alerts.warning.length + ' 件。慎重投与モードで計画を提示します。'
     : '判定完了。以下の計画を参考に実施してください。';
@@ -1174,7 +1205,7 @@ function goNext() {
   h += defRow('TP 法', tpDef, tpDefNote);
   h += '</table>';
   if (avgDefMl !== null) {
-    h += `<div class="p2-avg-row"><span class="p2-avg-lbl">参考欠乏量（算出可能 ${valids.length} 手法の平均）</span><span class="p2-avg-num">${avgDefMl.toLocaleString()}</span><span class="p2-avg-unit"> mL</span></div>`;
+    h += `<div class="p2-avg-row"><span class="p2-avg-lbl">推定欠乏量（評価用）（算出可能 ${valids.length} 手法の平均）</span><span class="p2-avg-num">${avgDefMl.toLocaleString()}</span><span class="p2-avg-unit"> mL</span></div>`;
     if (divPct !== null && divPct >= 20) {
       h += `<div class="p2-warn-line">推定法の乖離率 ${divPct}% — 身体所見・臨床判断を最優先してください。</div>`;
     }
@@ -1183,16 +1214,18 @@ function goNext() {
   }
   h += '</div></div>';
 
-  // 維持輸液量
-  h += `<div class="band"><div class="band-title green">維持輸液量（基礎必要量）</div><div class="band-body">`;
-  h += `<table class="p2-tbl">`;
-  h += row('基本維持量', mnt.base !== null ? mnt.base.toLocaleString() + ' mL/日' : '—', mnt.mode);
-  h += row('発熱補正係数', mnt.feverF !== 1 ? '× ' + mnt.feverF : '× 1.00（37℃以下）', '37℃超1℃ごとに +15%');
-  h += row('補正後維持量', mnt.adjusted !== null ? mnt.adjusted.toLocaleString() + ' mL/日' : '—', mnt.hourly !== null ? mnt.hourly + ' mL/時' : '');
-  h += `</table><div style="margin-top:6px;font-size:11px;color:#666;">※ 成人27.5 mL/kg/日・高齢者22.5 mL/kg/日は、日本の運用基準を主軸としつつ、NICE CG174 を補助的に参照して本ツールで採用した参考値です。ただし、NICE CG174 は重症腎疾患（severe renal disease）を適用除外としています。小児 Holliday-Segar は文献整合的です。</div></div></div>`;
+  if (showPlan) {
+    // 維持輸液量
+    h += `<div class="band"><div class="band-title green">維持輸液量（基礎必要量）</div><div class="band-body">`;
+    h += `<table class="p2-tbl">`;
+    h += row('基本維持量', mnt.base !== null ? mnt.base.toLocaleString() + ' mL/日' : '—', mnt.mode);
+    h += row('発熱補正係数', mnt.feverF !== 1 ? '× ' + mnt.feverF : '× 1.00（37℃以下）', '37℃超1℃ごとに +15%');
+    h += row('補正後維持量', mnt.adjusted !== null ? mnt.adjusted.toLocaleString() + ' mL/日' : '—', mnt.hourly !== null ? mnt.hourly + ' mL/時' : '');
+    h += `</table><div style="margin-top:6px;font-size:11px;color:#666;">※ 成人27.5 mL/kg/日・高齢者22.5 mL/kg/日は、日本の運用基準を主軸としつつ、NICE CG174 を補助的に参照して本ツールで採用した参考値です。ただし、NICE CG174 は重症腎疾患（severe renal disease）を適用除外としています。</div></div></div>`;
+  }
 
   // 推奨輸液プロトコル（Critical でなければ表示）
-  if (alerts.critical.length === 0) {
+  if (showPlan) {
     const protoTitle = volFactor < 1 ? '推奨輸液プロトコル（慎重投与 — 減量適用）' : '推奨輸液プロトコル（参考）';
     const protoColor = volFactor < 1 ? 'orange' : 'green';
     h += `<div class="band"><div class="band-title ${protoColor}">${protoTitle}</div><div class="band-body">`;
@@ -1225,7 +1258,7 @@ function goNext() {
         h += `<div class="proto-note">${r.note}</div></div></div>`;
       });
       h += '</div>';
-      h += `<div class="p2-warn-line" style="margin-top:8px;">欠乏補正の配分（最初の欠乏量に対して）：1日目 約33%・2日目 約33%・3日目 約34%、4〜5日目 0%（維持量だけ）。今は補正の${corrDay}日目として計算しています。1日の合計だけを、規格（200・500・1000 mL）の組み合わせで作れる100 mL単位に四捨五入しています（維持量と欠乏補正は調整せず、内訳のまま表示）。高張性でNaの目標を超える場合だけ切り下げます。欠乏量は毎日その日の体重と採血から計算し直し、補正の何日目かを入力してください。</div>`;
+      h += `<div class="p2-warn-line" style="margin-top:8px;">欠乏補正の配分（最初の欠乏量に対して）：1日目 約33%・2日目 約33%・3日目 基準欠乏量の1/3以下、4〜5日目 0%（維持量だけ）。今は補正の${corrDay}日目として計算しています。1日の合計だけを、規格（200・500・1000 mL）の組み合わせで作れる100 mL単位に四捨五入しています（維持量と欠乏補正は調整せず、内訳のまま表示）。高張性でNaの目標を超える場合だけ切り下げます。欠乏量は毎日その日の体重と採血から計算し直し、補正の何日目かを入力してください。</div>`;
       if (provCapped) {
         h += `<div class="p2-stop" style="margin-top:8px;">仮の枠の欠乏補正も、Naの目標以内になる量までに減らしています。欠乏は3日で終わらない可能性があります。毎日、その日の値で再計算してください。</div>`;
       }
@@ -1262,6 +1295,12 @@ function goNext() {
     h += `<div class="p2-stop">中止基準：呼吸困難・ラ音出現（肺水腫） / 尿量 &lt; 0.5 mL/kg/h / Na変化 &gt; 0.5 mEq/L/h</div>`;
     h += `<div class="p2-rec" style="margin-top:10px;">${fluidPlan.steps.map((s,i)=>`${i+1}. ${s}`).join('<br>')}</div>`;
     h += '</div></div>';
+  } else if (holdReasons.length && !alerts.critical.length) {
+    h += '<div class="band"><div class="band-title orange">輸液計画を保留</div><div class="band-body">';
+    h += '<ul>' + holdReasons.map(reason => '<li>' + reason + '</li>').join('') + '</ul>';
+    const urine = getUrinePerDay();
+    h += '<p>現体重 ' + curWeight + ' kg ／ 尿量 ' + (urine === null ? '未入力' : urine.toFixed(0) + ' mL/日（時間尿は日量換算）') + '</p>';
+    h += '</div></div>';
   } else {
     // Critical アラートあり → プロトコル非表示・代替メッセージ表示
     const critTitles = alerts.critical.map(a => a.title).join('　/　');
@@ -1279,7 +1318,7 @@ function goNext() {
   }
 
   // Na補正の試算（高張性のみ：5%ブドウ糖液が候補になるため）
-  if (naVal !== null && dtype === 'hyper') {
+  if (showPlan && dtype === 'hyper') {
     h += `<div class="band"><div class="band-title orange">Na補正の試算（Adrogue-Madias 式）</div><div class="band-body">`;
     h += `<table class="p2-tbl">`;
     h += row('TBW', tbwL !== null ? tbwL + ' L' : '—', '体重 ' + (curWeight||'—') + ' kg × TBW係数 ' + tbwCoef);
@@ -1289,8 +1328,8 @@ function goNext() {
     h += row('欠乏補正の当日分（配分）', avgDefMl !== null ? defAlloc.toLocaleString() + ' mL' : '—', '補正の' + corrDay + '日目。減量係数適用後');
     h += row('目標に収まる量', defLimitMl !== null ? defLimitMl.toLocaleString() + ' mL' : '—', '目標 ÷ 1Lあたりの変化量');
     h += row('欠乏補正の当日分（採用）', avgDefMl !== null ? defToday.toLocaleString() + ' mL' : '—', defReduced ? `Naの下がり方を目標以内にするため、欠乏補正を${defToday.toLocaleString()} mLに減らしました` : '配分どおり');
-    if (avgDefMl !== null && defEff1 !== defToday) h += row('調整後の合計に含まれる欠乏補正', defEff1.toLocaleString() + ' mL', '合計を100 mL単位に調整した分を含めて、Naの試算を行います');
-    h += row('24時間のNa変化量（試算）', na24Round !== null ? na24Round + ' mEq/L' : '—', na24Round !== null ? '目標以内の試算です。実測Naで確認してください' : (naZero ? '輸液量が0のため、試算は出しません' : '欠乏量が算出できないため試算しません'));
+    if (!naZero && !noDeficitCorrection && avgDefMl !== null && defEff1 !== defToday) h += row('調整後の合計に含まれる欠乏補正', defEff1.toLocaleString() + ' mL', '合計を100 mL単位に調整した分を含めて、Naの試算を行います');
+    h += row('24時間のNa変化量（試算）', na24Round !== null ? na24Round + ' mEq/L' : '—', na24Round !== null ? '目標以内の試算です。実測Naで確認してください' : (naZero ? '輸液量が0のため、試算は出しません' : noDeficitCorrection ? '本日の欠乏補正は0 mLのため、欠乏補正によるNa変化は試算しません' : '欠乏量が算出できないため試算しません'));
     h += row('1時間あたり', na24 !== null ? (Math.round(Math.abs(na24) / 24 * 100) / 100) + ' mEq/L/h' : '—', '上の試算を24で割った値');
     h += '</table>';
     h += `<div class="p2-warn-line">実測のNaが24時間で${naReport24} mEq/L を超えて下がったら、医師へ報告してください。</div>`;
@@ -1311,13 +1350,13 @@ function goNext() {
   const p2Alerts = [...alerts.warning, ...alerts.info].filter(a => a.title !== '尿量未評価');
   if (p2Alerts.length > 0) {
     h += `<div class="p2-rec" style="margin-top:10px;"><strong>判定根拠（第1段階アラートより）</strong><br>`;
-    p2Alerts.slice(0,5).forEach(a => { h += `• ${a.title}：${a.msg}<br>`; });
+    (showPlan ? p2Alerts.slice(0,5) : p2Alerts).forEach(a => { h += `• ${a.title}：${a.msg}<br>`; });
     h += '</div>';
   }
   h += '</div></div>';
 
   // 免責
-  h += `<div class="p2-disclaimer">本ツールの計算結果はあくまで参考値であり、「診断」を行うものではありません。輸液処方は必ず医師の指示に基づき、患者の臨床症状・バイタルサイン・尿量・体重などを定期的に再評価しながら実施してください。<br>計算根拠：体重法（組織異化補正済み）、Na法（Adrogue-Madias原理）、Hct法（TBW×[1−基準Hct/実測Hct]）、TP法（TBW×[1−7.0/TP]）。TP法は血管内蛋白量が一定であることを前提とした簡易推定であり、異常蛋白産生・蛋白喪失・低栄養・肝疾患・浮腫などでは信頼性が低下します。維持輸液：小児 Holliday-Segar / 高齢者22.5 / 成人27.5 mL/kg/日 ± 発熱補正（日本の運用基準を主軸としつつ、NICE CG174 を補助的に参照して本ツールで採用した参考値。ただし NICE CG174 は重症腎疾患を適用除外としている）。推算Posm = 2×Na + Glu/18 + BUN/2.8。<br>BNP閾値（200/500 pg/mL）は心不全の診断閾値ではなく、本ツールで慎重投与判断のために採用した安全上の参考閾値です。Na補正の急性/慢性判定はNa異常の発症時期ではなく、体重変化日数を代用指標とした参考判定です。正確には病歴聴取と再検査で補完してください。<br>参照文献:<br>1. 日本循環器学会 / 日本心不全学会. (2025). 2025年改訂版 心不全診療ガイドライン. https://www.j-circ.or.jp/cms/wp-content/uploads/2025/03/JCS2025_Kato.pdf<br>2. 日本腎臓学会. (2012). エビデンスに基づくCKD診療ガイドライン2012. 東京医学社.<br>3. Matsuo, S., Imai, E., Horio, M., et al. (2009). Revised equations for estimated GFR from serum creatinine in Japan. American Journal of Kidney Diseases, 53(6), 982-992. doi: 10.1053/j.ajkd.2008.12.034<br>4. 日本静脈経腸栄養学会. (2013). 静脈経腸栄養ガイドライン 第3版. 照林社.<br>5. Holliday, M. A., &amp; Segar, W. E. (1957). The maintenance need for water in parenteral fluid therapy. Pediatrics, 19(5), 823-832.<br>6. McDonagh, T. A., et al. (2021). 2021 ESC Guidelines for the diagnosis and treatment of acute and chronic heart failure. European Heart Journal, 42, 3599-3726. doi: 10.1093/eurheartj/ehab368<br>7. National Institute for Health and Care Excellence. (2013, updated 2016). Intravenous fluid therapy in adults in hospital (CG174). https://www.nice.org.uk/guidance/cg174<br>8. Adrogue, H. J., &amp; Madias, N. E. (2000). Hypernatremia. New England Journal of Medicine, 342, 1493-1499. doi: 10.1056/NEJM200005183422006<br>9. Adrogue, H. J., &amp; Madias, N. E. (2000). Hyponatremia. New England Journal of Medicine, 342, 1581-1589. doi: 10.1056/NEJM200005253422107<br>10. Wiedemann, H. P., et al. (2006). Comparison of two fluid-management strategies in acute lung injury. New England Journal of Medicine, 354, 2564-2575. doi: 10.1056/NEJMoa062200</div>`;
+  h += `<div class="p2-disclaimer">本ツールの計算結果はあくまで参考値であり、「診断」を行うものではありません。輸液処方は必ず医師の指示に基づき、患者の臨床症状・バイタルサイン・尿量・体重などを定期的に再評価しながら実施してください。<br>計算根拠：体重法（組織異化補正済み）、Na法（Adrogue-Madias原理）、Hct法（TBW×[1−基準Hct/実測Hct]）、TP法（TBW×[1−7.0/TP]）。TP法は血管内蛋白量が一定であることを前提とした簡易推定であり、異常蛋白産生・蛋白喪失・低栄養・肝疾患・浮腫などでは信頼性が低下します。${showPlan ? '維持輸液：高齢者22.5 / 成人27.5 mL/kg/日 ± 発熱補正（日本の運用基準を主軸としつつ、NICE CG174 を補助的に参照して本ツールで採用した参考値。ただし NICE CG174 は重症腎疾患を適用除外としている）。' : ''}推算Posm = 2×Na + Glu/18 + BUN/2.8。<br>BNP閾値（200/500 pg/mL）は心不全の診断閾値ではなく、本ツールで慎重投与判断のために採用した安全上の参考閾値です。Na補正の急性/慢性判定はNa異常の発症時期ではなく、体重変化日数を代用指標とした参考判定です。正確には病歴聴取と再検査で補完してください。<br>参照文献:<br>1. 日本循環器学会 / 日本心不全学会. (2025). 2025年改訂版 心不全診療ガイドライン. https://www.j-circ.or.jp/cms/wp-content/uploads/2025/03/JCS2025_Kato.pdf<br>2. 日本腎臓学会. (2012). エビデンスに基づくCKD診療ガイドライン2012. 東京医学社.<br>3. Matsuo, S., Imai, E., Horio, M., et al. (2009). Revised equations for estimated GFR from serum creatinine in Japan. American Journal of Kidney Diseases, 53(6), 982-992. doi: 10.1053/j.ajkd.2008.12.034<br>4. 日本静脈経腸栄養学会. (2013). 静脈経腸栄養ガイドライン 第3版. 照林社.<br>5. Spasovski G, et al. (2014). Clinical practice guideline on diagnosis and treatment of hyponatraemia. Eur J Endocrinol, 170(3), G1–G47. doi:10.1530/EJE-13-1020<br>6. McDonagh, T. A., et al. (2021). 2021 ESC Guidelines for the diagnosis and treatment of acute and chronic heart failure. European Heart Journal, 42, 3599-3726. doi: 10.1093/eurheartj/ehab368<br>7. National Institute for Health and Care Excellence. (2013, updated 2016). Intravenous fluid therapy in adults in hospital (CG174). https://www.nice.org.uk/guidance/cg174<br>8. Adrogue, H. J., &amp; Madias, N. E. (2000). Hypernatremia. New England Journal of Medicine, 342, 1493-1499. doi: 10.1056/NEJM200005183422006<br>9. Adrogue, H. J., &amp; Madias, N. E. (2000). Hyponatremia. New England Journal of Medicine, 342, 1581-1589. doi: 10.1056/NEJM200005253422107<br>10. Wiedemann, H. P., et al. (2006). Comparison of two fluid-management strategies in acute lung injury. New England Journal of Medicine, 354, 2564-2575. doi: 10.1056/NEJMoa062200</div>`;
   h += `<button class="p2-print-btn" onclick="window.print()">印刷 / PDF 保存</button>`;
 
   document.getElementById('p2-body').innerHTML = h;
@@ -1684,8 +1723,8 @@ const SAMPLE_CASES_BOUNDARY = [
   { label:'BV-32 ストレス2.0（組織0.5kg/日）', cat:'ストレス係数',age:60,sex:'male',usuW:60,daysAgo:5,curW:57,sbp:110,dbp:70,hr:80,rr:18,spo2:97,temp:37.0,urineH:35,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:140,k:4.0,cl:100,bun:18,cre:0.9,glu:100,tp:6.0,alb:3.2,hb:13.0,hct:40,bnp:null,stress:'2.0' },
 
   // TBW係数区分境界（年齢境界）
-  { label:'BV-33 14歳・小児TBW0.65', cat:'TBW境界',age:14,sex:'male',usuW:45,daysAgo:3,curW:44,sbp:110,dbp:68,hr:80,rr:18,spo2:97,temp:37.0,urineH:30,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:148,k:4.0,cl:100,bun:15,cre:0.7,glu:90,tp:7.0,alb:4.0,hb:14.0,hct:42,bnp:null,stress:'1.1' },
-  { label:'BV-34 15歳・成人TBW0.6（男）', cat:'TBW境界',age:15,sex:'male',usuW:50,daysAgo:3,curW:49,sbp:110,dbp:68,hr:80,rr:18,spo2:97,temp:37.0,urineH:35,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:148,k:4.0,cl:100,bun:15,cre:0.8,glu:90,tp:7.0,alb:4.0,hb:14.0,hct:42,bnp:null,stress:'1.1' },
+  { label:'BV-33 14歳・18歳未満・対象外の確認', cat:'TBW境界',age:14,sex:'male',usuW:45,daysAgo:3,curW:44,sbp:110,dbp:68,hr:80,rr:18,spo2:97,temp:37.0,urineH:30,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:148,k:4.0,cl:100,bun:15,cre:0.7,glu:90,tp:7.0,alb:4.0,hb:14.0,hct:42,bnp:null,stress:'1.1' },
+  { label:'BV-34 15歳・18歳未満・対象外の確認', cat:'TBW境界',age:15,sex:'male',usuW:50,daysAgo:3,curW:49,sbp:110,dbp:68,hr:80,rr:18,spo2:97,temp:37.0,urineH:35,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:148,k:4.0,cl:100,bun:15,cre:0.8,glu:90,tp:7.0,alb:4.0,hb:14.0,hct:42,bnp:null,stress:'1.1' },
   { label:'BV-35 64歳・成人TBW0.6（男）', cat:'TBW境界',age:64,sex:'male',usuW:65,daysAgo:3,curW:64,sbp:112,dbp:70,hr:82,rr:18,spo2:97,temp:37.0,urineH:38,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:148,k:4.0,cl:100,bun:20,cre:0.9,glu:100,tp:6.5,alb:3.5,hb:14.0,hct:43,bnp:null,stress:'1.0' },
   { label:'BV-36 65歳・高齢TBW0.5（男）', cat:'TBW境界',age:65,sex:'male',usuW:65,daysAgo:3,curW:64,sbp:112,dbp:70,hr:82,rr:18,spo2:97,temp:37.0,urineH:38,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:148,k:4.0,cl:100,bun:20,cre:0.9,glu:100,tp:6.5,alb:3.5,hb:14.0,hct:43,bnp:null,stress:'1.0' },
   { label:'BV-37 65歳・高齢TBW0.45（女）', cat:'TBW境界',age:65,sex:'female',usuW:55,daysAgo:3,curW:54,sbp:110,dbp:68,hr:80,rr:18,spo2:97,temp:37.0,urineH:35,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:148,k:4.0,cl:100,bun:18,cre:0.8,glu:90,tp:6.5,alb:3.5,hb:12.5,hct:39,bnp:null,stress:'1.0' },
@@ -1697,9 +1736,9 @@ const SAMPLE_CASES_BOUNDARY = [
   { label:'BV-41 減少期間8日（慢性）', cat:'体重変化期間',age:65,sex:'male',usuW:65,daysAgo:8,curW:62,sbp:110,dbp:70,hr:88,rr:18,spo2:97,temp:37.5,urineH:35,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:148,k:4.2,cl:104,bun:28,cre:1.0,glu:110,tp:6.0,alb:3.2,hb:13.5,hct:42,bnp:null,stress:'1.3' },
 
   // 小児Holliday-Segar
-  { label:'BV-42 小児5kg（Holliday-Segar検証）', cat:'小児',age:1,sex:'male',usuW:5.5,daysAgo:2,curW:5,sbp:80,dbp:50,hr:120,rr:30,spo2:97,temp:38.0,urineH:2.5,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:145,k:4.0,cl:108,bun:12,cre:0.3,glu:90,tp:6.0,alb:3.5,hb:12.0,hct:36,bnp:null,stress:'1.1' },
-  { label:'BV-43 小児10kg（境界・第1段階のみ）', cat:'小児',age:3,sex:'male',usuW:14,daysAgo:2,curW:13.5,sbp:85,dbp:55,hr:110,rr:28,spo2:97,temp:38.2,urineH:7,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:146,k:4.0,cl:106,bun:14,cre:0.4,glu:85,tp:6.2,alb:3.8,hb:12.5,hct:38,bnp:null,stress:'1.1' },
-  { label:'BV-44 小児25kg（Holliday-Segar 3段階）', cat:'小児',age:8,sex:'female',usuW:27,daysAgo:2,curW:25,sbp:90,dbp:58,hr:100,rr:24,spo2:97,temp:38.5,urineH:12,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:148,k:4.0,cl:108,bun:12,cre:0.5,glu:90,tp:6.5,alb:4.0,hb:13.0,hct:39,bnp:null,stress:'1.2' },
+  { label:'BV-42 1歳・18歳未満・対象外の確認', cat:'小児',age:1,sex:'male',usuW:5.5,daysAgo:2,curW:5,sbp:80,dbp:50,hr:120,rr:30,spo2:97,temp:38.0,urineH:2.5,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:145,k:4.0,cl:108,bun:12,cre:0.3,glu:90,tp:6.0,alb:3.5,hb:12.0,hct:36,bnp:null,stress:'1.1' },
+  { label:'BV-43 3歳・18歳未満・対象外の確認', cat:'小児',age:3,sex:'male',usuW:14,daysAgo:2,curW:13.5,sbp:85,dbp:55,hr:110,rr:28,spo2:97,temp:38.2,urineH:7,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:146,k:4.0,cl:106,bun:14,cre:0.4,glu:85,tp:6.2,alb:3.8,hb:12.5,hct:38,bnp:null,stress:'1.1' },
+  { label:'BV-44 8歳・18歳未満・対象外の確認', cat:'小児',age:8,sex:'female',usuW:27,daysAgo:2,curW:25,sbp:90,dbp:58,hr:100,rr:24,spo2:97,temp:38.5,urineH:12,jcs:'0',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:148,k:4.0,cl:108,bun:12,cre:0.5,glu:90,tp:6.5,alb:4.0,hb:13.0,hct:39,bnp:null,stress:'1.2' },
 
   // 高齢者維持輸液境界
   { label:'BV-45 高齢者体重20kg（低体重）', cat:'高齢維持量',age:88,sex:'female',usuW:22,daysAgo:14,curW:20,sbp:100,dbp:62,hr:85,rr:18,spo2:96,temp:37.0,urineH:18,jcs:'I-1',edema:false,rales:false,jvd:false,cpAngle:'sharp',na:150,k:4.0,cl:110,bun:28,cre:1.2,glu:110,tp:5.5,alb:2.5,hb:10.5,hct:33,bnp:null,stress:'1.0' },
@@ -1743,6 +1782,11 @@ const SAMPLE_CASES = [
 function loadSampleCase(idx) {
   const c = SAMPLE_CASES[idx];
   if (!c) return;
+
+  const caseInputs = ['firstDef', 'prevDrink', 'prevTube', 'prevDrain', 'prevStoma',
+    'prevDiarrhea', 'prevVomit', 'prevOther', 'mealPct'];
+  for (const id of caseInputs) document.getElementById(id).value = c[id] ?? '';
+  document.getElementById('corrDay').value = c.corrDay ?? '1';
 
   // 基本情報
   document.getElementById('age').value = c.age;
@@ -1794,6 +1838,7 @@ function loadSampleCase(idx) {
   const stressRadio = document.querySelector(`input[name="stress"][value="${c.stress}"]`);
   if (stressRadio) stressRadio.checked = true;
 
+  syncCustomSelects();
   validate();
 }
 

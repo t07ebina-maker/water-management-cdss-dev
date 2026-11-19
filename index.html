@@ -1,10 +1,10 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>特定行為（水分管理）判断支援ツール</title>
-  <link rel="stylesheet" href="style.css?v=20261110-v115">
+  <link rel="stylesheet" href="style.css?v=20261119-v116r2">
 </head>
 <body>
 
@@ -57,7 +57,8 @@
       <div class="gridAuto">
         <div class="form-group">
           <label class="fl" for="age">年齢 <span class="req">*</span> <span class="unit">歳</span></label>
-          <input type="number" id="age" min="1" max="120" placeholder="例: 75" oninput="validate()">
+          <input type="number" id="age" min="18" max="120" placeholder="例: 75" oninput="validate()">
+          <div class="fnote">対象は18歳以上です</div>
           <div class="fmsg" id="age-msg"></div>
         </div>
         <div class="form-group">
@@ -565,7 +566,7 @@
 
 </div><!-- /main -->
 
-<script src="main.js?v=20261110-v115" defer></script>
+<script src="main.js?v=20261119-v116r2" defer></script>
 </body>
 </html>
 
