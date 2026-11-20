@@ -54,6 +54,7 @@ body { font-family: 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif; font-size
 .c-status.ok       { background: var(--success-light); color: var(--success); }
 .c-status.error    { background: var(--danger-light);  color: var(--danger); }
 .c-status.waiting  { background: var(--gray-light);    color: var(--gray); }
+.c-status.warn     { background: var(--warning-light); color: var(--warning); border: 1px solid var(--warning-border); }
 .c-toggle { color: var(--primary); font-size: 11px; transition: transform .2s; }
 .card-header.collapsed .c-toggle { transform: rotate(-90deg); }
 .card-body { padding: 18px 20px; }
