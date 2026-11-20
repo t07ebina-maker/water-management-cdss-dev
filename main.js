@@ -1,7 +1,7 @@
 // ============================================================
 //  VERSION（Web・単体HTML・Excelで同じ版数を使う。画面の見出しと結果欄の末尾に表示する）
 // ============================================================
-const APP_VERSION = 'V1.16（2026-11-19）';
+const APP_VERSION = 'V1.16.1（2026-11-20）';
 
 // ============================================================
 //  STATE
@@ -316,6 +316,15 @@ function planHoldReasons(naVal, hasEdema, bnpVal) {
     holdReasons.push('血清Naが125 mEq/L未満のため、投与案を保留します。急速な補正による浸透圧性脱髄症候群（ODS）に注意し、医師に確認してください。');
   }
   return holdReasons;
+}
+
+// V1.16.1：保留時のフッター（第1段階）と結果欄の帯（第2段階）の文。Na未入力とほかの理由は同時には起きない
+function holdMessage(naVal) {
+  return naVal === null
+    ? { footer: '血清Naが未入力のため、輸液計画は保留になります。第2段階で所見を確認できます。',
+        strip: '血清Naが未入力のため、輸液計画を保留しています。血液検査のNaを入力してください。' }
+    : { footer: '医師への確認が必要な所見があるため、輸液計画は保留になります。第2段階で理由を確認してください。',
+        strip: '医師への確認が必要な所見があるため、輸液計画を保留しています。下の理由を確認してください。' };
 }
 
 function validate() {
@@ -684,6 +693,11 @@ function validate() {
   }
 
   setSection('s4-status', s4Errors);
+  // V1.16.1：Naは任意入力だが、空欄だと輸液計画が保留になるため、注意の色で知らせる（入力エラーがあればそちらを優先）
+  if (s4Errors === 0 && v('na') === null) {
+    const s4El = document.getElementById('s4-status');
+    if (s4El) { s4El.className = 'c-status warn'; s4El.textContent = 'Na未入力（計画は保留）'; }
+  }
 
   // --- Section 5 ---
   const stress = getStress();
@@ -722,7 +736,8 @@ function validate() {
   // ============================================================
   //  UPDATE ALERT DISPLAY
   // ============================================================
-  const restricted = alerts.critical.length > 0 || planHoldReasons(v('na'), edema, bnpR.val).length > 0;
+  const holdNow = planHoldReasons(v('na'), edema, bnpR.val);
+  const restricted = alerts.critical.length > 0 || holdNow.length > 0;
   if (restricted) {
     for (const alert of [...alerts.warning, ...alerts.info]) {
       if (alert.heldMsg) alert.msg = alert.heldMsg;
@@ -770,6 +785,12 @@ function validate() {
     btnNext.disabled = true;
     footerStat.className = 'footer-stat alert-warning';
     footerStat.textContent = '必須項目を入力してください';
+  } else if (holdNow.length > 0) {
+    // V1.16.1：輸液計画が保留になる入力。警告の有無にかかわらず保留を知らせ、「慎重投与モード」とは書かない
+    badge.className = 'status-badge warning'; badge.textContent = '輸液計画は保留';
+    btnNext.disabled = false;
+    footerStat.className = 'footer-stat alert-warning';
+    footerStat.textContent = holdMessage(v('na')).footer;
   } else if (totalWarn > 0) {
     badge.className = 'status-badge warning'; badge.textContent = '要注意 – 警告あり';
     btnNext.disabled = false;
@@ -865,6 +886,9 @@ function resetAll() {
   ['s1-status','s2-status','s3-status','s4-status','s5-status','s6-status'].forEach(id => {
     const el = document.getElementById(id); if (el) { el.className = 'c-status waiting'; el.textContent = id === 's6-status' ? '任意' : '入力待ち'; }
   });
+  // V1.16.1：身体所見は初期表示と同じ「任意入力」、血液検査はNaが空欄になるため「Na未入力（計画は保留）」
+  { const s3 = document.getElementById('s3-status'); if (s3) { s3.className = 'c-status ok'; s3.textContent = '任意入力'; } }
+  { const s4 = document.getElementById('s4-status'); if (s4) { s4.className = 'c-status warn'; s4.textContent = 'Na未入力（計画は保留）'; } }
   alerts = { critical: [], warning: [], info: [] };
   renderAlerts();
   document.getElementById('noAlertMsg').style.display = '';
@@ -1159,11 +1183,11 @@ function goNext() {
   let h = '';
 
   // 全体ステータス
-  const statusCls = alerts.critical.length > 0 ? 'critical' : (alerts.warning.length > 0 ? 'warning' : 'ok');
+  const statusCls = alerts.critical.length > 0 ? 'critical' : ((holdReasons.length > 0 || alerts.warning.length > 0) ? 'warning' : 'ok'); // V1.16.1：保留は警告の有無にかかわらず注意の色
   const statusMsg = alerts.critical.length > 0
     ? 'Critical ' + alerts.critical.length + ' 件。輸液計画提示を最小化します。まず医師へ報告してください。'
     : holdReasons.length > 0
-    ? '輸液計画を保留しています。理由を確認してください。'
+    ? holdMessage(naVal).strip
     : alerts.warning.length > 0
     ? 'Warning ' + alerts.warning.length + ' 件。慎重投与モードで計画を提示します。'
     : '判定完了。以下の計画を参考に実施してください。';
